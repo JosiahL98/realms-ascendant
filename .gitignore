@@ -4,3 +4,4 @@ screenshots/
 *.log
 .vite/
 tools/.texcache/
+__pycache__/
