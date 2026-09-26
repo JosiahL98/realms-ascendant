@@ -11,6 +11,7 @@ import { Effects } from './effects';
 import { getRig } from './models/units';
 import { buildingModel } from './models/buildings';
 import type { TextureAssets } from './assets';
+import { PostFX, loadQuality, saveQuality, type GraphicsQuality } from './post';
 import { BUILDINGS } from '../data/buildings';
 
 export const CAM_ELEV = Math.PI / 6; // 30 degrees -> 2:1 diamonds
@@ -50,6 +51,7 @@ export class Renderer {
   private lastFrame = performance.now();
   selectedIds = new Set<number>();
   hoverId = 0;
+  post: PostFX;
 
   constructor(canvas: HTMLCanvasElement, game: Game, localPlayer: number, assets: TextureAssets | null = null) {
     this.game = game;
@@ -60,7 +62,9 @@ export class Renderer {
     this.gl.shadowMap.enabled = true;
     this.gl.shadowMap.type = THREE.PCFShadowMap;
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
-    this.gl.toneMapping = THREE.NoToneMapping;
+    const tm = new URLSearchParams(location.search).get('tm') ?? 'neutral';
+    this.gl.toneMapping = tm === 'none' ? THREE.NoToneMapping : tm === 'agx' ? THREE.AgXToneMapping : tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
+    this.gl.toneMappingExposure = Number(new URLSearchParams(location.search).get('exposure') ?? 1.08);
     this.scene.background = new THREE.Color(0x000000);
 
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 400);
@@ -102,7 +106,16 @@ export class Renderer {
 
     // precompile a few common rigs
     for (const id of ['villager', 'villagerF', 'scout', 'sheep']) getRig(id);
+    const q = (new URLSearchParams(location.search).get('quality') as GraphicsQuality | null) ?? loadQuality();
+    this.post = new PostFX(this.gl, this.scene, this.camera, q);
     this.resize();
+  }
+
+  setQuality(q: GraphicsQuality): void {
+    saveQuality(q);
+    this.post.dispose();
+    this.post = new PostFX(this.gl, this.scene, this.camera, q);
+    this.post.setSize(this.width, this.height);
   }
 
   resize(): void {
@@ -111,6 +124,7 @@ export class Renderer {
     this.width = w;
     this.height = h;
     this.gl.setSize(w, h, false);
+    this.post?.setSize(w, h);
     this.updateCamera();
   }
 
@@ -352,7 +366,7 @@ export class Renderer {
     this.props.update(g, this.localTeam);
     this.fx.update(g, alpha, dt, now / 1000);
     this.updateSelectionFx(alpha);
-    this.gl.render(this.scene, this.camera);
+    this.post.render();
   }
 
   private updateSelectionFx(alpha: number): void {

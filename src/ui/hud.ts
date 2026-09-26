@@ -453,6 +453,8 @@ export class Hud {
       <button class="mbtn" data-a="resume">Resume</button>
       <div style="text-align:center;margin:8px 0">Game speed:
         ${[1, 1.5, 2, 3].map((v) => `<button class="mbtn small" data-speed="${v}" style="${s.speed === v ? 'color:#fff;border-color:#fff' : ''}">${v}×</button>`).join('')}</div>
+      <div style="text-align:center;margin:8px 0">Graphics:
+        ${(['low', 'medium', 'high'] as const).map((q) => `<button class="mbtn small" data-quality="${q}" style="${s.renderer.post.quality === q ? 'color:#fff;border-color:#fff' : ''}">${q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div>
       <div style="text-align:center;margin:8px 0">Sound:
         <button class="mbtn small" data-a="sfx">${s.audio.sfxOn ? 'Effects on' : 'Effects off'}</button>
         <button class="mbtn small" data-a="music">${s.audio.musicOn ? 'Music on' : 'Music off'}</button></div>
@@ -461,6 +463,10 @@ export class Hud {
       <button class="mbtn" data-a="quit">Quit to main menu</button>`);
     m.querySelectorAll('[data-speed]').forEach((el) => el.addEventListener('click', () => {
       s.speed = Number((el as HTMLElement).dataset.speed);
+      this.showMenu();
+    }));
+    m.querySelectorAll('[data-quality]').forEach((el) => el.addEventListener('click', () => {
+      s.renderer.setQuality((el as HTMLElement).dataset.quality as 'low' | 'medium' | 'high');
       this.showMenu();
     }));
     m.querySelectorAll('[data-a]').forEach((el) => el.addEventListener('click', () => {

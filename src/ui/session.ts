@@ -102,6 +102,7 @@ export class Session {
     window.removeEventListener('resize', this.resize);
     this.input.dispose();
     this.audio.stopMusic();
+    this.renderer.post.dispose();
     this.renderer.gl.dispose();
   }
 

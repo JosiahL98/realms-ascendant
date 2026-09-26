@@ -21,9 +21,10 @@ CACHE = os.path.join(ROOT, 'tools', '.texcache')
 UA = {'User-Agent': 'realms-ascendant-texture-fetch/1.0'}
 
 # (layer file, poly haven id, saturation, brightness, warmth, contrast)
+BALANCE = {'1_steppe': (0.9, 1.0, 0.82), '0_grass': (0.94, 1.02, 0.9)}
 TERRAIN = [
-    ('0_grass', 'leafy_grass', 1.35, 1.05, 0.0, 1.05),
-    ('1_steppe', 'aerial_grass_rock', 1.15, 1.08, 0.02, 1.0),
+    ('0_grass', 'leafy_grass', 1.3, 1.05, 0.0, 1.05),
+    ('1_steppe', 'aerial_grass_rock', 1.1, 1.06, 0.0, 1.0),
     ('2_dirt', 'brown_mud_dry', 1.1, 1.05, 0.02, 1.0),
     ('3_sand', 'sand_01', 1.05, 1.18, 0.04, 0.95),
     ('4_forest', 'forest_leaves_02', 1.1, 0.8, 0.0, 1.05),
@@ -93,6 +94,10 @@ def main():
         img = ImageEnhance.Brightness(img).enhance(bri)
         img = ImageEnhance.Contrast(img).enhance(con)
         img = warm(img, wr)
+        if name in BALANCE:
+            br, bg, bb = BALANCE[name]
+            r, g, b = img.split()
+            img = Image.merge('RGB', (r.point(lambda v: min(255, int(v * br))), g.point(lambda v: min(255, int(v * bg))), b.point(lambda v: min(255, int(v * bb)))))
         if disp:
             h = Image.open(io.BytesIO(fetch_bytes(disp, f'{aid}_disp.png'))).convert('L').resize((512, 512), Image.LANCZOS)
         else:
