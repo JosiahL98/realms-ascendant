@@ -112,7 +112,7 @@ export const TERRAIN_TEX_SIZE = 256;
 /** Terrain detail textures in the order of terrain ids (see sim/map.ts T). */
 export function makeTerrainTextures(seed = 7): THREE.DataArrayTexture {
   const S = TERRAIN_TEX_SIZE;
-  const layers = 10;
+  const layers = 11;
   const data = new Uint8Array(S * S * 4 * layers);
   const rng = new RNG(seed);
   const n = new Noise2D(seed);
@@ -231,8 +231,11 @@ export function makeTerrainTextures(seed = 7): THREE.DataArrayTexture {
     bed(c255(56, 66, 64), c255(76, 86, 82)), // deep bed
     snow(), // snow
     road(), // road
+    bed(c255(96, 88, 76), c255(132, 124, 108)), // rock (steep slopes)
   ];
   textures.forEach((p, i) => p.toBytes(data, i * S * S * 4));
+  // same height encoding as the photo textures: alpha in 128..255
+  for (let i = 3; i < data.length; i += 4) data[i] = 128 + (data[i] >> 1);
   const tex = new THREE.DataArrayTexture(data, S, S, layers);
   tex.format = THREE.RGBAFormat;
   tex.type = THREE.UnsignedByteType;

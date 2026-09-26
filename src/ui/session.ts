@@ -12,6 +12,7 @@ import { Hud } from './hud';
 import { Input } from './input';
 import { Minimap } from './minimap';
 import { AudioSys } from '../audio/audio';
+import type { TextureAssets } from '../render/assets';
 
 export type TargetMode = 'attackMove' | 'patrol' | 'follow' | 'garrison' | 'repair' | 'attackGround' | 'rally' | 'heal' | 'convert' | 'unloadAt';
 
@@ -48,7 +49,8 @@ export class Session {
   selVersion = 0;
   private fxTimer = 0;
 
-  constructor(root: HTMLElement, setup: GameSetup, makeAI: (game: Game, pid: number) => AIController | null, onExit: () => void, audio: AudioSys) {
+  constructor(root: HTMLElement, setup: GameSetup, makeAI: (game: Game, pid: number) => AIController | null, onExit: () => void, audio: AudioSys,
+    assets: TextureAssets | null = null) {
     this.root = root;
     this.onExit = onExit;
     this.audio = audio;
@@ -58,7 +60,7 @@ export class Session {
     this.canvas = root.querySelector('#view') as HTMLCanvasElement;
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
     this.octx = this.overlay.getContext('2d')!;
-    this.renderer = new Renderer(this.canvas, this.game, this.local);
+    this.renderer = new Renderer(this.canvas, this.game, this.local, assets);
     this.hud = new Hud(this, root.querySelector('#hud') as HTMLElement);
     this.minimap = new Minimap(this, this.hud.minimapCanvas);
     this.input = new Input(this);

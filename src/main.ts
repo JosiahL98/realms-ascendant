@@ -5,6 +5,7 @@ import { Menus } from './ui/menus';
 import { AudioSys } from './audio/audio';
 import { AIPlayer } from './ai/ai';
 import { issueCommand } from './sim/commands';
+import { loadTextureAssets } from './render/assets';
 
 const app = document.getElementById('app')!;
 const audio = new AudioSys();
@@ -15,9 +16,10 @@ const menus = new Menus(app, audio, startGame);
 function startGame(setup: GameSetup): void {
   menus.showLoading('Preparing the realm…');
   // let the loading screen paint before the heavy lifting
-  setTimeout(() => {
+  setTimeout(async () => {
+    const assets = await loadTextureAssets();
     app.innerHTML = '';
-    session = new Session(app, setup, (game, pid) => new AIPlayer(game, pid, setup.players[pid - 1].difficulty), backToMenu, audio);
+    session = new Session(app, setup, (game, pid) => new AIPlayer(game, pid, setup.players[pid - 1].difficulty), backToMenu, audio, assets);
     applyDebug(session);
     session.start();
     (window as unknown as Record<string, unknown>).__ready = true;

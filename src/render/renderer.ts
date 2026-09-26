@@ -10,6 +10,7 @@ import { PropView } from './propView';
 import { Effects } from './effects';
 import { getRig } from './models/units';
 import { buildingModel } from './models/buildings';
+import type { TextureAssets } from './assets';
 import { BUILDINGS } from '../data/buildings';
 
 export const CAM_ELEV = Math.PI / 6; // 30 degrees -> 2:1 diamonds
@@ -50,7 +51,7 @@ export class Renderer {
   selectedIds = new Set<number>();
   hoverId = 0;
 
-  constructor(canvas: HTMLCanvasElement, game: Game, localPlayer: number) {
+  constructor(canvas: HTMLCanvasElement, game: Game, localPlayer: number, assets: TextureAssets | null = null) {
     this.game = game;
     this.localPlayer = localPlayer;
     this.localTeam = game.teamOf[localPlayer];
@@ -75,7 +76,8 @@ export class Renderer {
     this.scene.add(this.sun, this.sun.target);
 
     worldUniforms.uMapSize.value = game.map.n;
-    worldUniforms.uDetailTex.value = makeDetailTextures(11);
+    worldUniforms.uDetailTex.value = assets?.detail ?? makeDetailTextures(11);
+    worldUniforms.uDetailGain.value = assets?.detail ? 2.0 : 1.9;
     const n = game.map.n;
     this.fogData = new Uint8Array(n * n);
     this.fogTex = new THREE.DataTexture(this.fogData, n, n, THREE.RedFormat, THREE.UnsignedByteType);
@@ -83,7 +85,7 @@ export class Renderer {
     this.fogTex.needsUpdate = true;
     worldUniforms.uFogTex.value = this.fogTex;
 
-    this.terrain = new TerrainView(game.map);
+    this.terrain = new TerrainView(game.map, assets?.terrain ?? null);
     this.scene.add(this.terrain.mesh, this.terrain.water);
     this.scene.add(this.units.group, this.buildings.group, this.props.group, this.fx.group);
 

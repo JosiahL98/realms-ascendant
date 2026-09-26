@@ -12,9 +12,9 @@ export class TerrainView {
   readonly terrainTex: THREE.DataArrayTexture;
   private waterMat: THREE.ShaderMaterial;
 
-  constructor(map: GameMap) {
+  constructor(map: GameMap, photo: THREE.DataArrayTexture | null = null) {
     const n = map.n;
-    this.terrainTex = makeTerrainTextures(7);
+    this.terrainTex = photo ?? makeTerrainTextures(7);
     this.noiseTex = makeNoiseTexture(5);
 
     // tile type map
@@ -90,23 +90,25 @@ export class TerrainView {
             float t10 = tileType(i + vec2(1.0, 0.0));
             float t01 = tileType(i + vec2(0.0, 1.0));
             float t11 = tileType(i + vec2(1.0, 1.0));
-            vec2 duv = p * 0.25;
-            vec4 c00 = texture(uTerrainTex, vec3(duv, t00));
-            vec4 c10 = texture(uTerrainTex, vec3(duv, t10));
-            vec4 c01 = texture(uTerrainTex, vec3(duv, t01));
-            vec4 c11 = texture(uTerrainTex, vec3(duv, t11));
+            // two scales (the second rotated) hide the tiling of the photo textures
+            vec2 uvA = p * 0.25;
+            vec2 uvB = mat2(0.8, -0.6, 0.6, 0.8) * (p * 0.09) + vec2(0.37, 0.61);
+            vec4 c00 = mix(texture(uTerrainTex, vec3(uvA, t00)), texture(uTerrainTex, vec3(uvB, t00)), 0.42);
+            vec4 c10 = mix(texture(uTerrainTex, vec3(uvA, t10)), texture(uTerrainTex, vec3(uvB, t10)), 0.42);
+            vec4 c01 = mix(texture(uTerrainTex, vec3(uvA, t01)), texture(uTerrainTex, vec3(uvB, t01)), 0.42);
+            vec4 c11 = mix(texture(uTerrainTex, vec3(uvA, t11)), texture(uTerrainTex, vec3(uvB, t11)), 0.42);
             vec4 w = vec4((1.0 - f.x) * (1.0 - f.y), f.x * (1.0 - f.y), (1.0 - f.x) * f.y, f.x * f.y);
-            vec4 hg = vec4(c00.a, c10.a, c01.a, c11.a);
+            vec4 hg = (vec4(c00.a, c10.a, c01.a, c11.a) - 0.5) * 2.0;
             w = w * (0.35 + hg);
             w = w * w * w * w;
             w /= max(dot(w, vec4(1.0)), 1e-5);
             vec3 col = c00.rgb * w.x + c10.rgb * w.y + c01.rgb * w.z + c11.rgb * w.w;
             float m = texture2D(uNoiseTex, p * 0.012).r;
             float m2 = texture2D(uNoiseTex, p * 0.045 + 0.3).g;
-            col *= 0.84 + m * 0.26 + (m2 - 0.5) * 0.12;
+            col *= 0.9 + m * 0.18 + (m2 - 0.5) * 0.1;
             float slope = 1.0 - clamp(vWNorm.y, 0.0, 1.0);
-            vec3 rock = vec3(0.34, 0.3, 0.25) * (0.8 + m2 * 0.4);
-            col = mix(col, rock, smoothstep(0.28, 0.5, slope) * 0.8);
+            vec3 rock = texture(uTerrainTex, vec3(p * 0.18, 10.0)).rgb * (0.85 + m2 * 0.3);
+            col = mix(col, rock, smoothstep(0.26, 0.48, slope) * 0.85);
             // wet sand near the waterline
             col *= mix(0.7, 1.0, smoothstep(-0.35, -0.05, vWPos.y));
             diffuseColor.rgb = col;

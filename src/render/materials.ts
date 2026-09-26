@@ -6,6 +6,8 @@ export const worldUniforms = {
   uMapSize: { value: 120 },
   uTime: { value: 0 },
   uDetailTex: { value: null as THREE.Texture | null },
+  /** Multiplier that makes the detail texture average out to 1. */
+  uDetailGain: { value: 1.9 },
 };
 
 export interface WorldMatOpts {
@@ -48,6 +50,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
     shader.uniforms.uMapSize = worldUniforms.uMapSize;
     shader.uniforms.uTime = worldUniforms.uTime;
     shader.uniforms.uDetailTex = worldUniforms.uDetailTex;
+    shader.uniforms.uDetailGain = worldUniforms.uDetailGain;
     let vDecl = `
       uniform float uMapSize;
       uniform float uTime;
@@ -108,6 +111,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
     if (opts.detail) {
       fDecl += `
         uniform highp sampler2DArray uDetailTex;
+        uniform float uDetailGain;
         varying vec3 vObjPos; varying vec3 vObjNormal; varying float vMatId;
       `;
     }
@@ -125,7 +129,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
             else if (an.x > an.z) tuv = vec2(vObjPos.z, vObjPos.y);
             else tuv = vec2(vObjPos.x, vObjPos.y);
             vec3 d = texture(uDetailTex, vec3(tuv * 0.5, mid - 1.0)).rgb;
-            diffuseColor.rgb *= d * 1.9;
+            diffuseColor.rgb *= d * uDetailGain;
           }
         }
       `;
