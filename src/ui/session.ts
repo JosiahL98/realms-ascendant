@@ -374,6 +374,13 @@ export class Session {
         case 'fell':
           r.props.markDirty();
           break;
+        case 'relics': {
+          const mine = ev.team === g.teamOf[this.local];
+          const names = g.players.filter((p) => !p.isGaia && p.team === ev.team).map((p) => p.name).join(' & ');
+          if (ev.state === 'held') this.hud.message(mine ? 'You control every relic! Hold them for 600 seconds to win.' : `${names} control every relic! Victory in 600 seconds unless you take one.`, mine ? 'good' : 'alert');
+          else this.hud.message(mine ? 'You no longer hold every relic.' : `${names} no longer hold every relic.`, 'info');
+          break;
+        }
         case 'wonder': {
           const p = g.players[ev.owner];
           if (ev.state === 'built') this.hud.message(`${p.name} has completed a Wonder! It must be destroyed within 600 seconds.`, 'alert');

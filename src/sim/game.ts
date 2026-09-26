@@ -11,7 +11,7 @@ import { GAIA_COLOR, PLAYER_COLORS, Player } from './player';
 import { SpatialHash } from './spatial';
 import { Vision } from './vision';
 import { updateUnit, resolveCollisions } from './unitAI';
-import { updateBuilding, finishConstruction } from './buildingAI';
+import { updateBuilding, finishConstruction, completeTech } from './buildingAI';
 import { updateProjectiles } from './combat';
 import { generateMap, type MapType } from './mapgen';
 
@@ -54,7 +54,8 @@ export type GameEvent =
   | { e: 'msg'; owner: number; text: string; kind: 'error' | 'info' }
   | { e: 'placed'; owner: number; x: number; z: number }
   | { e: 'fell'; id: number }
-  | { e: 'wonder'; owner: number; state: 'started' | 'destroyed' | 'built' };
+  | { e: 'wonder'; owner: number; state: 'started' | 'destroyed' | 'built' }
+  | { e: 'relics'; team: number; state: 'held' | 'lost' };
 
 export const TICK = 0.05;
 
@@ -92,6 +93,9 @@ export class Game {
   market: Record<'food' | 'wood' | 'stone', number> = { food: 100, wood: 100, stone: 100 };
   winnerTeam = -1;
   over = false;
+  /** Relic victory: team holding every relic and seconds remaining. */
+  relicTeam = -1;
+  relicTimer = -1;
   /** animal id -> carcass resource id */
   carcassOf = new Map<number, number>();
   private acc = 0;
@@ -124,9 +128,29 @@ export class Game {
     generateMap(this);
     this.map.refreshAll();
     this.map.labelWaterBodies();
+    this.applyStartAge();
     for (const p of this.players) this.recomputePop(p.id);
     this.spatial.rebuild(this.units);
     this.vision.update(true);
+    this.events.length = 0;
+  }
+
+  /** Later starting ages: research the ages instantly and add a few villagers. */
+  private applyStartAge(): void {
+    const age = this.setup.startAge ?? 0;
+    if (age <= 0) return;
+    const techs = ['feudalAge', 'castleAge', 'imperialAge'];
+    for (const p of this.players) {
+      if (p.isGaia) continue;
+      for (let a = 0; a < age; a++) completeTech(this, p, techs[a]);
+      const tc = this.buildings.find((b) => b.owner === p.id && b.type === 'townCenter');
+      if (!tc) continue;
+      for (let i = 0; i < age * 3; i++) {
+        const a = (i / (age * 3)) * Math.PI * 2;
+        const pt = this.pathfinder.setDomain(false).nearestPassable(tc.x + Math.cos(a) * 4, tc.z + Math.sin(a) * 4, this.teamOf[p.id], 6);
+        if (pt) this.spawnUnit('villager', p.id, pt.x, pt.z);
+      }
+    }
   }
 
   /* ------------------------------------------------------------------ */
@@ -617,7 +641,45 @@ export class Game {
     }
     const teams = new Set<number>();
     for (const p of this.players) if (!p.isGaia && !p.defeated) teams.add(p.team);
-    if (teams.size <= 1) this.endGame(teams.size === 1 ? [...teams][0] : -1);
+    if (teams.size <= 1) {
+      this.endGame(teams.size === 1 ? [...teams][0] : -1);
+      return;
+    }
+    if (this.setup.victory !== 'conquest') this.checkRelics();
+  }
+
+  /** A team that keeps every relic in its temples for 600 seconds wins (standard victory). */
+  private checkRelics(): void {
+    const relics = this.resources.filter((r) => r.alive && r.type === 'relic');
+    let team = -1;
+    let all = relics.length > 0;
+    for (const r of relics) {
+      const b = r.heldBy ? this.building(r.heldBy) : undefined;
+      if (!b || b.type !== 'monastery') {
+        all = false;
+        break;
+      }
+      const t = this.teamOf[b.owner];
+      if (team === -1) team = t;
+      else if (team !== t) {
+        all = false;
+        break;
+      }
+    }
+    if (all) {
+      if (this.relicTeam !== team) {
+        this.relicTeam = team;
+        this.relicTimer = 600;
+        this.events.push({ e: 'relics', team, state: 'held' });
+      } else {
+        this.relicTimer -= 1;
+        if (this.relicTimer <= 0) this.endGame(team);
+      }
+    } else if (this.relicTeam !== -1) {
+      this.events.push({ e: 'relics', team: this.relicTeam, state: 'lost' });
+      this.relicTeam = -1;
+      this.relicTimer = -1;
+    }
   }
 
   defeatPlayer(p: Player): void {

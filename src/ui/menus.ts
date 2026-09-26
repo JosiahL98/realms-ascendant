@@ -19,6 +19,7 @@ interface SetupState {
   popLimit: number;
   victory: 'standard' | 'conquest';
   reveal: 'normal' | 'explored' | 'all';
+  startAge?: number;
 }
 
 export class Menus {
@@ -155,6 +156,7 @@ export class Menus {
           <div class="row">Map size <select data-g="mapSize">${MAP_SIZES.map((m) => `<option value="${m.size}" ${m.size === s.mapSize ? 'selected' : ''}>${m.name}</option>`).join('')}</select></div>
           <div class="row">Resources <select data-g="resources">${['standard', 'medium', 'high'].map((r) => `<option value="${r}" ${r === s.resources ? 'selected' : ''}>${r[0].toUpperCase() + r.slice(1)}</option>`).join('')}</select></div>
           <div class="row">Population <select data-g="popLimit">${[75, 100, 150, 200, 250].map((r) => `<option value="${r}" ${r === s.popLimit ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+          <div class="row">Starting age <select data-g="startAge">${['Dark Age', 'Feudal Age', 'Castle Age', 'Imperial Age'].map((a, i) => `<option value="${i}" ${(s.startAge ?? 0) === i ? 'selected' : ''}>${a}</option>`).join('')}</select></div>
           <div class="row">Victory <select data-g="victory"><option value="standard" ${s.victory === 'standard' ? 'selected' : ''}>Standard (conquest or wonder)</option><option value="conquest" ${s.victory === 'conquest' ? 'selected' : ''}>Conquest</option></select></div>
           <div class="row">Reveal map <select data-g="reveal"><option value="normal" ${s.reveal === 'normal' ? 'selected' : ''}>Normal</option><option value="explored" ${s.reveal === 'explored' ? 'selected' : ''}>Explored</option><option value="all" ${s.reveal === 'all' ? 'selected' : ''}>All visible</option></select></div>
           <button class="mbtn" data-a="start" style="margin-top:18px">Start Game</button>
@@ -189,7 +191,7 @@ export class Menus {
     el.querySelectorAll('[data-g]').forEach((f) => f.addEventListener('change', () => {
       const k = (f as HTMLElement).dataset.g as keyof SetupState;
       const v = (f as HTMLSelectElement).value;
-      (s as unknown as Record<string, unknown>)[k] = k === 'mapSize' || k === 'popLimit' ? Number(v) : v;
+      (s as unknown as Record<string, unknown>)[k] = k === 'mapSize' || k === 'popLimit' || k === 'startAge' ? Number(v) : v;
       this.saveState();
       this.showSetup();
     }));
@@ -236,7 +238,7 @@ export class Menus {
       popLimit: quick ? 200 : s.popLimit,
       reveal: quick ? 'normal' : s.reveal,
       victory: quick ? 'standard' : s.victory,
-      startAge: 0,
+      startAge: (quick ? 0 : s.startAge ?? 0) as GameSetup['startAge'],
     };
     this.onStart(setup);
   }

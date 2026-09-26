@@ -137,7 +137,7 @@ if (params.get('autostart')) {
     popLimit: 200,
     reveal: (params.get('reveal') ?? 'normal') as GameSetup['reveal'],
     victory: 'standard',
-    startAge: 0,
+    startAge: Number(params.get('age') ?? 0) as GameSetup['startAge'],
   });
 } else {
   menus.showMain();

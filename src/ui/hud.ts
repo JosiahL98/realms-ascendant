@@ -155,6 +155,16 @@ export class Hud {
       const score = Math.floor(scoreOf(this.s, p.id));
       rows.push(`<div class="${p.defeated ? 'dead' : ''}" style="color:${p.color.css}">${escapeHtml(p.name)} (${p.civ.name}) — ${AGE_NAMES[p.age].split(' ')[0]} · ${score}</div>`);
     }
+    for (const b of g.buildings) {
+      if (b.alive && b.type === 'wonder' && b.built && b.wonderTimer > 0) {
+        const p = g.players[b.owner];
+        rows.push(`<div style="color:${p.color.css};font-weight:600">Wonder — ${escapeHtml(p.name)}: ${Math.ceil(b.wonderTimer)}</div>`);
+      }
+    }
+    if (g.relicTeam >= 0 && g.relicTimer > 0) {
+      const p = g.players.find((q) => !q.isGaia && q.team === g.relicTeam);
+      if (p) rows.push(`<div style="color:${p.color.css};font-weight:600">Relics — ${escapeHtml(p.name)}: ${Math.ceil(g.relicTimer)}</div>`);
+    }
     const html = rows.join('');
     if (this.scoresEl.innerHTML !== html) this.scoresEl.innerHTML = html;
   }

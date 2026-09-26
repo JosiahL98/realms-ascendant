@@ -231,5 +231,32 @@ const ageTo = (g: Game, pid: number, age: number) => {
   check('fire ships sink a galley', !galley.alive);
 }
 
+/* ---------------------------------------------------------------- relic victory */
+{
+  const g = fresh();
+  ageTo(g, 1, 2);
+  const mon = g.createBuilding('monastery', 1, 50, 50, true);
+  for (const r of g.resources) if (r.alive && r.type === 'relic') {
+    r.heldBy = mon.id;
+    mon.relics.push(r.id);
+  }
+  const won = run(g, 620, () => g.over);
+  check('holding every relic for 600s wins', won && g.winnerTeam === g.teamOf[1], `relics ${mon.relics.length}`);
+}
+
+/* ---------------------------------------------------------------- starting age */
+{
+  const g = new Game({
+    seed: 5, mapType: 'steppe', mapSize: 120,
+    players: [
+      { name: 'A', civ: 'latins', color: 0, team: 1, human: true, difficulty: 'standard' },
+      { name: 'B', civ: 'suebi', color: 1, team: 2, human: false, difficulty: 'standard' },
+    ],
+    resources: 'standard', popLimit: 200, reveal: 'normal', victory: 'standard', startAge: 2,
+  });
+  const vills = g.units.filter((u) => u.owner === 1 && u.type === 'villager').length;
+  check('Castle Age start', g.players[1].age === 2 && g.players[2].age === 2 && vills === 9, `age ${g.players[1].age}, villagers ${vills}`);
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nall mechanics passed');
 process.exit(failures ? 1 : 0);
