@@ -932,6 +932,12 @@ function doGather(game: Game, u: Unit, o: Extract<Order, { t: 'gather' }>, dt: n
     t.food -= amt;
     if (t.food <= 0.001) farmExhausted(game, t, u);
   } else {
+    if (t.gatherTick !== game.tickCount) {
+      t.gatherers = t.gatherTick === game.tickCount - 1 ? t.gatherCount : 0;
+      t.gatherTick = game.tickCount;
+      t.gatherCount = 0;
+    }
+    t.gatherCount++;
     if (t.type === 'tree' && !t.felled) {
       t.felled = true;
       t.fellAngle = Math.atan2(t.x - u.x, t.z - u.z);

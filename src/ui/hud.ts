@@ -221,6 +221,7 @@ export class Hud {
   hotkey(key: string, shift: boolean): boolean {
     const slot = GRID_KEYS.indexOf(key.toUpperCase());
     if (slot < 0) return false;
+    this.updateCommands();
     const b = this.buttons.find((x) => x.slot === slot);
     if (!b) return false;
     if (!b.enabled) {

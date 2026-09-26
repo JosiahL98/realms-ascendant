@@ -275,7 +275,9 @@ export class Input {
   private boxSelect(x0: number, y0: number, x1: number, y1: number, shift: boolean): void {
     const s = this.s;
     const units = s.renderer.unitsInRect(x0, y0, x1, y1);
-    const own = units.filter((u) => u.owner === s.local);
+    let own = units.filter((u) => u.owner === s.local);
+    // livestock only when nothing else is in the box
+    if (own.some((u) => !u.def.animal)) own = own.filter((u) => !u.def.animal);
     let pick: Unit[] = own;
     if (!own.length) pick = units.filter((u) => !u.def.animal).slice(0, 1);
     if (!pick.length && !shift) {

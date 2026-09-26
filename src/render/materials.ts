@@ -135,9 +135,9 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
       fogCode = `
         {
           float fw = texture2D(uFogTex, vFogXZ / uMapSize).r;
-          float k = fw * fw * (fw < 0.99 ? 0.9 : 1.0);
+          float k = fw < 0.5 ? fw * 0.62 : mix(0.31, 1.0, (fw - 0.5) * 2.0);
           float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
-          gl_FragColor.rgb = mix(vec3(lum) * 0.8, gl_FragColor.rgb, smoothstep(0.45, 1.0, fw)) * k;
+          gl_FragColor.rgb = mix(mix(vec3(lum), gl_FragColor.rgb, 0.45), gl_FragColor.rgb, smoothstep(0.5, 1.0, fw)) * k;
         }
       `;
     }

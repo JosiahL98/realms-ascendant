@@ -41,7 +41,8 @@ export function computeButtons(s: Session): CmdButton[] {
 
   if (units.length) {
     const vills = units.filter((u) => u.def.gatherer);
-    const allVills = vills.length === units.length;
+    // any villager in the selection gives access to the build menus
+    const allVills = vills.length > 0 && units.every((u) => u.def.gatherer || !u.def.monk);
     if (allVills && s.panelMode !== 'main') {
       const menu = s.panelMode === 'buildEco' ? 'eco' : 'mil';
       for (const def of BUILDING_LIST) {
@@ -65,6 +66,11 @@ export function computeButtons(s: Session): CmdButton[] {
       out.push({ slot: 2, icon: glyphIcon('repair', 'cmd'), title: 'Repair', desc: 'Repair a damaged building or siege weapon. Costs resources.', enabled: true, action: () => s.beginTargeting('repair') });
       out.push({ slot: 3, icon: glyphIcon('garrison', 'cmd'), title: 'Garrison', desc: 'Garrison inside a Town Center, tower or castle.', enabled: true, action: () => s.beginTargeting('garrison') });
       out.push({ slot: 4, icon: glyphIcon('stop', 'cmd'), title: 'Stop', enabled: true, action: () => s.issue({ c: 'stop', units: units.map((u) => u.id) }) });
+      if (units.some((u) => !u.def.gatherer)) {
+        const ids = units.map((u) => u.id);
+        out.push({ slot: 5, icon: glyphIcon('attackMove', 'cmd'), title: 'Attack Move', desc: 'Move to a point, attacking any enemies met on the way.', enabled: true, action: () => s.beginTargeting('attackMove') });
+        void ids;
+      }
       out.push({ slot: 14, icon: glyphIcon('delete', 'cmd'), title: 'Delete', desc: 'Kill the selected units.', enabled: true, action: () => s.deleteSelected() });
       return out;
     }

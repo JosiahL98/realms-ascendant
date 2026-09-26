@@ -416,7 +416,7 @@ export class Game {
             if (!id || id === excludeId) continue;
             const e = this.entities.get(id);
             if (!e || e.kind !== 'resource' || e.gather !== kind || e.amount <= 0) continue;
-            const d = Math.hypot(e.x - x, e.z - z) + e.gatherers * 1.5;
+            const d = Math.hypot(e.x - x, e.z - z) + this.crowd(e) * (kind === 'forage' ? 2.5 : 1.2);
             if (d < bs) {
               bs = d;
               best = e;
@@ -431,13 +431,19 @@ export class Game {
       if (!r.alive || r.gather !== kind || r.id === excludeId || r.amount <= 0) continue;
       const d = Math.hypot(r.x - x, r.z - z);
       if (d > maxR) continue;
-      const s = d + r.gatherers * 1.5;
+      const s = d + this.crowd(r) * 1.5;
       if (s < bs) {
         bs = s;
         best = r;
       }
     }
     return best;
+  }
+
+  /** Villagers currently working a resource node (as of the last tick). */
+  crowd(r: ResourceNode): number {
+    if (r.gatherTick >= this.tickCount - 1) return Math.max(r.gatherers, r.gatherTick === this.tickCount ? r.gatherCount : 0);
+    return 0;
   }
 
   msg(owner: number, text: string, kind: 'error' | 'info' = 'info'): void {

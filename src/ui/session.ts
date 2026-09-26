@@ -73,7 +73,7 @@ export class Session {
     window.addEventListener('resize', this.resize);
     (window as unknown as Record<string, unknown>).__session = this;
     (window as unknown as Record<string, unknown>).__game = this.game;
-    this.hud.message(`Welcome, ${this.game.players[this.local].name} of the ${this.game.players[this.local].civ.realm}.`, 'good');
+    this.hud.message(`Welcome, ${this.game.players[this.local].name} of ${this.game.players[this.local].civ.realm.replace(/^The /, "the ")}.`, "good");
     this.hud.message('Gather resources, advance through the ages and conquer your rivals.', 'info');
     this.audio.startMusic();
   }
@@ -161,6 +161,7 @@ export class Session {
     } else this.selection = ids.slice(0, 60);
     this.panelMode = 'main';
     this.selVersion++;
+    this.hud.refreshCommands();
     const first = this.game.get(this.selection[0]);
     if (first && first.alive && first.owner === this.local) this.audio.selectSound(first);
   }

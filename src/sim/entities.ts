@@ -227,7 +227,10 @@ export class ResourceNode {
   decay = 0;
   /** Model id of the carcass animal. */
   carcassOf = '';
+  /** Villagers working this node during the previous tick (for spreading workers). */
   gatherers = 0;
+  gatherTick = 0;
+  gatherCount = 0;
   /** Relic: unit id carrying it, or building id holding it. */
   heldBy = 0;
   rot = 0;

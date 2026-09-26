@@ -115,9 +115,9 @@ export class TerrainView {
         .replace('#include <opaque_fragment>', `#include <opaque_fragment>
           {
             float fw = texture2D(uFogTex, vWPos.xz / uMapSize).r;
-            float k = fw * fw * (fw < 0.99 ? 0.9 : 1.0);
+            float k = fw < 0.5 ? fw * 0.62 : mix(0.31, 1.0, (fw - 0.5) * 2.0);
             float lum = dot(gl_FragColor.rgb, vec3(0.3, 0.59, 0.11));
-            gl_FragColor.rgb = mix(vec3(lum) * 0.8, gl_FragColor.rgb, smoothstep(0.45, 1.0, fw)) * k;
+            gl_FragColor.rgb = mix(mix(vec3(lum), gl_FragColor.rgb, 0.45), gl_FragColor.rgb, smoothstep(0.5, 1.0, fw)) * k;
           }
         `);
     };
@@ -182,7 +182,7 @@ export class TerrainView {
           float alpha = mix(0.35, 0.93, smoothstep(0.0, 0.7, depth));
           alpha = max(alpha, foam * 0.8);
           float fw = texture2D(uFogTex, p / uMapSize).r;
-          float k = fw * fw * (fw < 0.99 ? 0.9 : 1.0);
+          float k = fw < 0.5 ? fw * 0.62 : mix(0.31, 1.0, (fw - 0.5) * 2.0);
           col *= k;
           alpha = mix(alpha, 1.0, 1.0 - smoothstep(0.0, 0.3, fw));
           gl_FragColor = vec4(col, alpha);

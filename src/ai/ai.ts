@@ -367,7 +367,10 @@ export class AIPlayer {
       if (carcass) return this.cmd({ c: 'gather', units: [u.id], target: carcass.id });
       if (sheep && Math.hypot(sheep.x - bx, sheep.z - bz) < 16) return this.cmd({ c: 'gather', units: [u.id], target: sheep.id });
       // berries (needs a mill)
-      const berry = this.nearestRes('forage', bx, bz, 22);
+      const berryAny = this.nearestRes('forage', bx, bz, 22);
+      const foragers = this.vills.filter((v) => v.order.t === 'gather' && v.gatherKind === 'forage').length;
+      const bushes = berryAny ? g.resources.filter((r) => r.alive && r.gather === 'forage' && Math.hypot(r.x - berryAny.x, r.z - berryAny.z) < 6).length : 0;
+      const berry = berryAny && foragers < bushes * 1.4 + 1 ? (g.findResource('forage', berryAny.x, berryAny.z, 6) ?? berryAny) : null;
       if (berry) {
         if (this.dropoffNear('food', berry.x, berry.z, 5)) return this.cmd({ c: 'gather', units: [u.id], target: berry.id });
         if (!this.placedRecently('mill', 25) && this.p.canAfford(this.p.buildingCost('mill'))) {
