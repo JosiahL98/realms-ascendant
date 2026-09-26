@@ -1,0 +1,29 @@
+{
+  "name": "realms-ascendant",
+  "version": "1.0.0",
+  "description": "An Age-of-Kings style RTS set in an alternate history where Carthage burned Rome",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit -p .",
+    "simtest": "tsx tools/simtest.ts",
+    "shot": "node tools/screenshot.mjs"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@fontsource/cinzel": "^5.3.0",
+    "@fontsource/eb-garamond": "^5.3.0",
+    "@types/three": "^0.186.0",
+    "playwright": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1"
+  }
+}
