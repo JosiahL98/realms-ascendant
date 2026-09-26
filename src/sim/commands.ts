@@ -102,7 +102,8 @@ export function canPlace(game: Game, pid: number, type: string, tx: number, tz: 
   const h = rotated ? def.size[0] : def.size[1];
   const m = game.map;
   const team = game.teamOf[pid];
-  const exp = game.vision.explored.get(team);
+  // computer players plan with full map knowledge; humans must explore first
+  const exp = game.players[pid]?.isHuman ? game.vision.explored.get(team) : undefined;
   if (tx < 0 || tz < 0 || tx + w > m.n || tz + h > m.n) return false;
   let minH = Infinity, maxH = -Infinity;
   for (let z = tz; z < tz + h; z++) {

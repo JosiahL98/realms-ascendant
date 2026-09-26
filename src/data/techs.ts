@@ -24,7 +24,7 @@ add({
 add({
   id: 'imperialAge', name: 'Imperial Age', age: 2, building: 'townCenter', cost: { food: 1000, gold: 800 }, time: 190, slot: 4, icon: 'age3',
   isAge: true, requiresBuildings: { count: 2, age: 3 }, effects: [{ kind: 'age', age: 3 }],
-  description: 'Advance to the Imperial Age. Requires two Castle Age buildings (University, Monastery, Siege Workshop) or a Castle.',
+  description: 'Advance to the Imperial Age. Requires two Castle Age buildings (University, Temple, Siege Workshop) or a Castle.',
 });
 
 /* ---------------------------- Town Center -------------------------- */
@@ -221,36 +221,36 @@ add({
 
 /* ---------------------------- Monastery ---------------------------- */
 add({
-  id: 'redemption', name: 'Redemption', age: 2, building: 'monastery', cost: { gold: 475 }, time: 50, slot: 5, icon: 'redemption',
-  effects: [{ kind: 'flag', flag: 'redemption' }], description: 'Monks can convert siege weapons.',
+  id: 'redemption', name: 'Redemption', age: 2, building: 'monastery', cost: { gold: 475 }, time: 50, slot: 1, icon: 'redemption',
+  effects: [{ kind: 'flag', flag: 'redemption' }], description: 'Priests can convert siege weapons.',
 });
 add({
-  id: 'atonement', name: 'Atonement', age: 2, building: 'monastery', cost: { gold: 325 }, time: 40, slot: 6, icon: 'atonement',
-  effects: [{ kind: 'flag', flag: 'atonement' }], description: 'Monks can convert enemy monks.',
+  id: 'atonement', name: 'Atonement', age: 2, building: 'monastery', cost: { gold: 325 }, time: 40, slot: 2, icon: 'atonement',
+  effects: [{ kind: 'flag', flag: 'atonement' }], description: 'Priests can convert enemy priests.',
 });
 add({
-  id: 'sanctity', name: 'Sanctity', age: 2, building: 'monastery', cost: { gold: 120 }, time: 60, slot: 7, icon: 'sanctity',
-  effects: [stat(units('monk'), 'hp', 15)], description: 'Monks +15 HP.',
+  id: 'sanctity', name: 'Sanctity', age: 2, building: 'monastery', cost: { gold: 120 }, time: 60, slot: 3, icon: 'sanctity',
+  effects: [stat(units('monk'), 'hp', 15)], description: 'Priests +15 HP.',
 });
 add({
-  id: 'fervor', name: 'Fervor', age: 2, building: 'monastery', cost: { gold: 140 }, time: 50, slot: 8, icon: 'fervor',
-  effects: [stat(units('monk'), 'speed', 1.15, 'mul')], description: 'Monks move 15% faster.',
+  id: 'fervor', name: 'Fervor', age: 2, building: 'monastery', cost: { gold: 140 }, time: 50, slot: 4, icon: 'fervor',
+  effects: [stat(units('monk'), 'speed', 1.15, 'mul')], description: 'Priests move 15% faster.',
 });
 add({
-  id: 'blockPrinting', name: 'Block Printing', age: 3, building: 'monastery', cost: { gold: 200 }, time: 55, slot: 10, icon: 'blockPrinting',
-  effects: [stat(units('monk'), 'range', 3)], description: 'Monks +3 conversion range.',
+  id: 'blockPrinting', name: 'Block Printing', age: 3, building: 'monastery', cost: { gold: 200 }, time: 55, slot: 5, icon: 'blockPrinting',
+  effects: [stat(units('monk'), 'range', 3)], description: 'Priests +3 conversion range.',
 });
 add({
-  id: 'illumination', name: 'Illumination', age: 3, building: 'monastery', cost: { gold: 120 }, time: 65, slot: 11, icon: 'illumination',
-  effects: [{ kind: 'flag', flag: 'illumination' }], description: 'Monks regain faith 50% faster.',
+  id: 'illumination', name: 'Illumination', age: 3, building: 'monastery', cost: { gold: 120 }, time: 65, slot: 6, icon: 'illumination',
+  effects: [{ kind: 'flag', flag: 'illumination' }], description: 'Priests regain faith 50% faster.',
 });
 add({
-  id: 'faith', name: 'Faith', age: 3, building: 'monastery', cost: { food: 750, gold: 1000 }, time: 60, slot: 12, icon: 'faith',
+  id: 'faith', name: 'Faith', age: 3, building: 'monastery', cost: { food: 750, gold: 1000 }, time: 60, slot: 7, icon: 'faith',
   effects: [{ kind: 'flag', flag: 'faith' }], description: 'Your units are much harder to convert.',
 });
 add({
-  id: 'theocracy', name: 'Theocracy', age: 3, building: 'monastery', cost: { gold: 200 }, time: 75, slot: 13, icon: 'theocracy',
-  effects: [{ kind: 'flag', flag: 'theocracy' }], description: 'Monks regain faith twice as fast after converting.',
+  id: 'theocracy', name: 'Theocracy', age: 3, building: 'monastery', cost: { gold: 200 }, time: 75, slot: 8, icon: 'theocracy',
+  effects: [{ kind: 'flag', flag: 'theocracy' }], description: 'Priests regain faith twice as fast after converting.',
 });
 
 /* ---------------------------- Unit upgrades ------------------------- */
@@ -335,7 +335,7 @@ add({
   effects: [{ kind: 'bonus', target: units('villager'), vs: 'building', value: 15 }], description: 'Villagers +15 attack against buildings.',
 });
 add({
-  id: 'conscription', name: 'Conscription', age: 3, building: 'castle', cost: { food: 150, gold: 150 }, time: 60, slot: 10, icon: 'conscription',
+  id: 'conscription', name: 'Conscription', age: 3, building: 'castle', cost: { food: 150, gold: 150 }, time: 60, slot: 3, icon: 'conscription',
   effects: [{ kind: 'workRate', building: 'military', mult: 1.33 }], description: 'Military buildings train units 33% faster.',
 });
 
@@ -392,7 +392,7 @@ ut('companionCavalry', 'Companion Cavalry', 3, 'hellenes', { food: 700, gold: 70
   [stat(units('knight', 'cavalier', 'paladin'), 'attack', 3), stat(units('knight', 'cavalier', 'paladin'), 'hp', 20)],
   'Knight line +3 attack and +20 HP.');
 ut('druidicRites', 'Druidic Rites', 2, 'gauls', { food: 300, gold: 200 }, 40,
-  [stat(units('monk'), 'hp', 30), stat(units('monk'), 'speed', 1.2, 'mul')], 'Monks +30 HP and move 20% faster.');
+  [stat(units('monk'), 'hp', 30), stat(units('monk'), 'speed', 1.2, 'mul')], 'Priests +30 HP and move 20% faster.');
 ut('torcOfKings', 'Torc of Kings', 3, 'gauls', { food: 750, gold: 450 }, 50,
   [stat(cls('infantry'), 'attack', 2)], 'Infantry +2 attack.');
 ut('bloodOath', 'Blood Oath', 2, 'suebi', { food: 350, gold: 250 }, 40,

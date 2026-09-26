@@ -34,7 +34,7 @@ export interface GameSetup {
   resources: 'standard' | 'medium' | 'high';
   popLimit: number;
   reveal: 'normal' | 'explored' | 'all';
-  victory: 'conquest' | 'wonder';
+  victory: 'standard' | 'conquest';
   startAge: AgeIndex;
 }
 
@@ -226,8 +226,10 @@ export class Game {
     this.entities.delete(u.id);
     this.deadUnits = true;
     const owner = this.players[u.owner];
-    if (!owner.isGaia) owner.stats.unitsLost++;
-    if (killerOwner > 0 && killerOwner !== u.owner) this.players[killerOwner].stats.unitsKilled++;
+    if (!u.def.animal) {
+      if (!owner.isGaia) owner.stats.unitsLost++;
+      if (killerOwner > 0 && killerOwner !== u.owner) this.players[killerOwner].stats.unitsKilled++;
+    }
     // release claims
     if (u.order.t === 'gather') {
       const f = this.building(u.order.target);
@@ -591,17 +593,6 @@ export class Game {
         }
       }
       if (!alive || p.resigned) this.defeatPlayer(p);
-    }
-    // Wonder victory
-    if (this.setup.victory === 'wonder' || true) {
-      for (const b of this.buildings) {
-        if (!b.alive || b.type !== 'wonder' || !b.built) continue;
-        if (b.wonderTimer < 0) b.wonderTimer = 600;
-        if (b.wonderTimer <= 0) {
-          this.endGame(this.teamOf[b.owner]);
-          return;
-        }
-      }
     }
     const teams = new Set<number>();
     for (const p of this.players) if (!p.isGaia && !p.defeated) teams.add(p.team);

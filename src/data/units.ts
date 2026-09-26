@@ -273,10 +273,10 @@ add(u({
 /* Monastery                                                            */
 /* ------------------------------------------------------------------ */
 add(u({
-  id: 'monk', name: 'Monk', classes: ['monk', 'land'], age: 2, trainedAt: 'monastery', slot: 0,
+  id: 'monk', name: 'Priest', classes: ['monk', 'land'], age: 2, trainedAt: 'monastery', slot: 0,
   cost: { gold: 100 }, trainTime: 51, pop: 1, hp: 30, speed: 0.7, los: 11, attack: 0, attackType: 'melee',
   range: 9, reload: 1, meleeArmor: 0, pierceArmor: 0, radius: 0.2, model: 'monk', weapon: 'staff', monk: true,
-  description: 'Heals friendly units, converts enemies to your cause, and carries relics to the Monastery.',
+  description: 'Heals friendly units, converts enemies to your faith, and carries relics to the Temple.',
 }));
 
 /* ------------------------------------------------------------------ */

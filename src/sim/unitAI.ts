@@ -740,6 +740,7 @@ function returnResources(game: Game, u: Unit, dt: number): boolean {
     deposit(game, u);
     u.returning = false;
     u.dropId = 0;
+    u.farmMoveAt = -1;
     resetNav(u);
     return true;
   }
@@ -864,10 +865,13 @@ function doGather(game: Game, u: Unit, o: Extract<Order, { t: 'gather' }>, dt: n
     t.farmer = u.id;
     kind = 'farm';
     amountLeft = t.food;
-    if (u.farmSpotX < t.tx || u.farmSpotX > t.tx + t.w || u.farmSpotZ < t.tz || u.farmSpotZ > t.tz + t.h || game.time > u.farmMoveAt) {
-      u.farmSpotX = t.tx + 0.5 + game.rng.next() * (t.w - 1);
-      u.farmSpotZ = t.tz + 0.5 + game.rng.next() * (t.h - 1);
-      u.farmMoveAt = game.time + 5 + game.rng.next() * 6;
+    if (u.farmSpotX < t.tx || u.farmSpotX > t.tx + t.w || u.farmSpotZ < t.tz || u.farmSpotZ > t.tz + t.h || u.farmMoveAt < 0) {
+      // work the part of the field closest to the drop-off
+      const drop = game.nearestDropoff(u.owner, 'food', t.x, t.z);
+      const ax = drop ? drop.x : t.x, az = drop ? drop.z : t.z;
+      u.farmSpotX = clamp(ax, t.tx + 0.6, t.tx + t.w - 0.6) + (game.rng.next() - 0.5) * 0.6;
+      u.farmSpotZ = clamp(az, t.tz + 0.6, t.tz + t.h - 0.6) + (game.rng.next() - 0.5) * 0.6;
+      u.farmMoveAt = 0;
     }
     rect = null;
     gx = u.farmSpotX;
@@ -1341,7 +1345,7 @@ function doConvert(game: Game, u: Unit, o: Extract<Order, { t: 'convert' }>, dt:
     return;
   }
   if (!convertible(game, u, t)) {
-    game.msg(u.owner, t.def.monk ? 'Research Atonement to convert monks' : 'Research Redemption to convert siege weapons', 'error');
+    game.msg(u.owner, t.def.monk ? 'Research Atonement to convert priests' : 'Research Redemption to convert siege weapons', 'error');
     finishOrder(game, u);
     return;
   }
@@ -1390,7 +1394,7 @@ function doRelic(game: Game, u: Unit, o: Extract<Order, { t: 'relic' }>, dt: num
   if (s === 'arrived') {
     r.heldBy = u.id;
     u.relicId = r.id;
-    game.msg(u.owner, 'Your monk has picked up a relic. Bring it to a Monastery.', 'info');
+    game.msg(u.owner, 'Your priest has picked up a relic. Bring it to a Temple.', 'info');
     finishOrder(game, u);
   } else if (s === 'failed') finishOrder(game, u);
 }

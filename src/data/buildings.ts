@@ -126,11 +126,11 @@ add({
   description: 'Opens for your own units and allies while keeping enemies out. Press R to rotate before placing.',
 });
 add({
-  id: 'monastery', name: 'Monastery', age: 2, cost: { stone: 175 }, buildTime: 40, hp: 2100, size: [3, 3],
+  id: 'monastery', name: 'Temple', age: 2, cost: { stone: 175 }, buildTime: 40, hp: 2100, size: [3, 3],
   meleeArmor: 3, pierceArmor: 10, los: 6, classes: B, trains: ['monk'], garrison: 10,
   researches: ['redemption', 'atonement', 'sanctity', 'fervor', 'blockPrinting', 'illumination', 'faith', 'theocracy'],
   model: 'monastery', menu: 'eco', slot: 8, ageReqFor: 3,
-  description: 'Trains monks and holds relics, which generate gold.',
+  description: 'Trains priests and houses sacred relics, which generate gold.',
 });
 add({
   id: 'university', name: 'University', age: 2, cost: { wood: 200 }, buildTime: 60, hp: 2100, size: [4, 4],

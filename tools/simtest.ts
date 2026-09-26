@@ -13,7 +13,7 @@ const setup: GameSetup = {
   resources: 'standard',
   popLimit: 200,
   reveal: 'all',
-  victory: 'conquest',
+  victory: 'conquest' as const,
   startAge: 0,
 };
 
