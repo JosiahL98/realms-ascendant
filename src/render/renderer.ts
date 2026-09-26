@@ -7,6 +7,7 @@ import { TerrainView } from './terrainView';
 import { UnitView } from './unitView';
 import { BuildingView } from './buildingView';
 import { PropView } from './propView';
+import { GroundDetailView } from './groundView';
 import { Effects } from './effects';
 import { getRig } from './models/units';
 import { buildingModel } from './models/buildings';
@@ -27,6 +28,7 @@ export class Renderer {
   units = new UnitView();
   buildings = new BuildingView();
   props = new PropView();
+  ground: GroundDetailView;
   fx = new Effects();
   game: Game;
   localPlayer: number;
@@ -95,6 +97,8 @@ export class Renderer {
 
     this.terrain = new TerrainView(game.map, assets?.terrain ?? null);
     this.scene.add(this.terrain.mesh, this.terrain.water);
+    this.ground = new GroundDetailView(game);
+    this.scene.add(this.ground.group);
     this.scene.add(this.units.group, this.buildings.group, this.props.group, this.fx.group);
 
     this.ghostMats = [
@@ -125,6 +129,7 @@ export class Renderer {
     this.post = q === 'high' ? new PostFX(this.gl, this.scene, this.camera) : null;
     this.post?.setSize(this.width, this.height);
     this.sun.castShadow = q !== 'low';
+    this.ground.group.visible = q !== 'low';
   }
 
   resize(): void {
@@ -373,6 +378,7 @@ export class Renderer {
     this.units.update(g, alpha, this.localTeam, (x, z) => this.inView(x, z, 2), this.colorOf);
     this.buildings.update(g, this.localTeam, this.colorOf, (x, z, r) => this.inView(x, z, r));
     this.props.update(g, this.localTeam);
+    this.ground.update(g);
     this.fx.update(g, alpha, dt, now / 1000);
     this.updateSelectionFx(alpha);
     if (this.post) this.post.render();

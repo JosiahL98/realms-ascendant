@@ -32,20 +32,17 @@ try {
   }));
   const configs = [
     ['medium (default)', () => {}],
-    ['medium, no leaves', () => {
+    ['medium, no ground clutter', () => { window.__session.renderer.ground.group.visible = false; }],
+    ['medium, no leaves/clutter', () => {
       window.__session.renderer.props.group.traverse((o) => { if (o.userData.noAO) o.material.visible = false; });
     }],
-    ['medium, leaves, no alpha-to-coverage', () => {
-      window.__session.renderer.props.group.traverse((o) => {
-        if (o.userData.noAO) { o.material.visible = true; o.material.alphaToCoverage = false; o.material.needsUpdate = true; }
-      });
-    }],
-    ['low', () => {
+    ['medium, zoomed out', () => {
       const r = window.__session.renderer;
-      r.props.group.traverse((o) => { if (o.userData.noAO) { o.material.alphaToCoverage = true; o.material.needsUpdate = true; } });
-      r.setQuality('low');
+      r.ground.group.visible = true;
+      r.props.group.traverse((o) => { if (o.userData.noAO) o.material.visible = true; });
+      r.setZoom(30);
     }],
-    ['high', () => window.__session.renderer.setQuality('high')],
+    ['low, zoomed out', () => window.__session.renderer.setQuality('low')],
   ];
   for (const [name, fn] of configs) {
     await page.evaluate(fn);

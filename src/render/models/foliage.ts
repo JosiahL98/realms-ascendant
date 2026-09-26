@@ -3,16 +3,105 @@ import { RNG } from '../../util/rng';
 import { GeoBuilder } from '../geo';
 
 /**
- * Tree foliage built from alpha-tested "cards" textured with painted leaf clumps.
- * The atlas is 2x2 (row 0 is the top of the image, the texture is not flipped):
- * [0] broadleaf, [1] pine needles, [2] palm frond, [3] small silvery leaves (olive).
+ * Foliage built from alpha-tested "cards" textured with painted leaf clumps and grass tufts.
+ * The atlas is 4x2 tiles (row 0 is the top of the image, the texture is not flipped):
+ * [0] broadleaf, [1] pine needles, [2] palm frond, [3] small silvery leaves (olive),
+ * [4] green grass, [5] dry grass, [6] flowering grass, [7] reeds. Grass tiles grow up from their bottom edge.
  */
 export const LEAF_BROAD = 0;
 export const LEAF_NEEDLE = 1;
 export const LEAF_FROND = 2;
 export const LEAF_SMALL = 3;
+export const GRASS_GREEN = 4;
+export const GRASS_DRY = 5;
+export const GRASS_FLOWERS = 6;
+export const REEDS = 7;
 
 const TILE = 256;
+const COLS = 4;
+const ROWS = 2;
+/** Size of one tile in UV space. */
+const DU = 1 / COLS;
+const DV = 1 / ROWS;
+
+function tileOrigin(k: number): [number, number] {
+  return [(k % COLS) * DU, Math.floor(k / COLS) * DV];
+}
+
+/** A tuft of blades growing from the bottom centre of the tile. */
+function paintTuft(ctx: CanvasRenderingContext2D, ox: number, oy: number, S: number, rng: RNG, kind: number): void {
+  ctx.lineCap = 'round';
+  const base = oy + S - 3;
+  const reeds = kind === REEDS;
+  const blades = reeds ? 26 : kind === GRASS_FLOWERS ? 34 : 46;
+  const tips: [number, number][] = [];
+  for (let i = 0; i < blades; i++) {
+    const x0 = ox + S / 2 + rng.range(-0.22, 0.22) * S;
+    const h = (reeds ? rng.range(0.6, 0.97) : rng.range(0.35, 0.9)) * S;
+    const lean = rng.range(-0.35, 0.35) * (reeds ? 0.35 : 1) + (x0 - (ox + S / 2)) / S;
+    const x1 = x0 + lean * h * 0.6, y1 = base - h;
+    let r: number, g: number, b: number;
+    if (kind === GRASS_DRY) {
+      const dry = rng.next();
+      r = 150 + dry * 40; g = 128 + dry * 30; b = 70 + dry * 20;
+      if (rng.chance(0.25)) { r = 104; g = 118; b = 56; }
+    } else if (reeds) {
+      r = 78 + rng.int(-10, 12); g = 104 + rng.int(-12, 14); b = 52 + rng.int(-8, 8);
+    } else {
+      r = 86 + rng.int(-12, 16); g = 120 + rng.int(-16, 20); b = 42 + rng.int(-8, 10);
+    }
+    // blade: a tapered curve, darker at the root
+    const w = (reeds ? 4.2 : 3.4) * rng.range(0.8, 1.2);
+    const cxm = x0 + lean * h * 0.15, cym = base - h * 0.55;
+    ctx.fillStyle = `rgb(${Math.round(r * 0.62)},${Math.round(g * 0.62)},${Math.round(b * 0.62)})`;
+    ctx.beginPath();
+    ctx.moveTo(x0 - w, base);
+    ctx.quadraticCurveTo(cxm - w * 0.6, cym, x1, y1);
+    ctx.quadraticCurveTo(cxm + w * 0.6, cym, x0 + w, base);
+    ctx.fill();
+    // lit upper part
+    ctx.strokeStyle = `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+    ctx.lineWidth = w * 0.7;
+    ctx.beginPath();
+    ctx.moveTo(cxm, cym + h * 0.1);
+    ctx.quadraticCurveTo((cxm + x1) / 2 - lean * 4, (cym + y1) / 2, x1, y1 + 2);
+    ctx.stroke();
+    tips.push([x1, y1]);
+  }
+  if (kind === GRASS_FLOWERS) {
+    const cols = ['#f4f0e0', '#f2d23a', '#b87ad8', '#e8e4f0', '#d84a3a'];
+    for (let i = 0; i < 14; i++) {
+      const [x, y] = tips[rng.int(0, tips.length - 1)];
+      ctx.fillStyle = cols[rng.int(0, cols.length - 1)];
+      for (let p = 0; p < 5; p++) {
+        const a = (p / 5) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.arc(x + Math.cos(a) * 4.5, y + Math.sin(a) * 4.5, 3.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.fillStyle = '#e8b020';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  if (reeds) {
+    // cattails
+    for (let i = 0; i < 5; i++) {
+      const x = ox + S / 2 + rng.range(-0.18, 0.18) * S, top = oy + rng.range(0.05, 0.3) * S;
+      ctx.strokeStyle = 'rgb(92,110,60)';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.moveTo(x, base);
+      ctx.lineTo(x, top);
+      ctx.stroke();
+      ctx.fillStyle = 'rgb(104,68,36)';
+      ctx.beginPath();
+      ctx.ellipse(x, top + 22, 6, 20, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+}
 
 function paintLeafClump(ctx: CanvasRenderingContext2D, ox: number, oy: number, S: number, rng: RNG, kind: number): void {
   const cx = ox + S / 2, cy = oy + S / 2;
@@ -103,60 +192,61 @@ function paintLeafClump(ctx: CanvasRenderingContext2D, ox: number, oy: number, S
   }
 }
 
-/** 2x2 box filter; colours are weighted by alpha so transparent texels do not darken the edges. */
-function downsample(src: Uint8Array, size: number): Uint8Array {
-  const ns = size >> 1;
-  const out = new Uint8Array(ns * ns * 4);
-  for (let y = 0; y < ns; y++) {
-    for (let x = 0; x < ns; x++) {
+/** 2x2 box filter (2x1 or 1x2 once a side reaches 1); colours are weighted by alpha so transparent texels do not darken the edges. */
+function downsample(src: Uint8Array, w: number, h: number): Uint8Array {
+  const nw = Math.max(1, w >> 1), nh = Math.max(1, h >> 1);
+  const sx = w > 1 ? 2 : 1, sy = h > 1 ? 2 : 1;
+  const out = new Uint8Array(nw * nh * 4);
+  for (let y = 0; y < nh; y++) {
+    for (let x = 0; x < nw; x++) {
       let r = 0, g = 0, b = 0, a = 0, wsum = 0;
-      for (let dy = 0; dy < 2; dy++) {
-        for (let dx = 0; dx < 2; dx++) {
-          const i = ((y * 2 + dy) * size + x * 2 + dx) * 4;
-          const w = src[i + 3] + 1;
-          r += src[i] * w;
-          g += src[i + 1] * w;
-          b += src[i + 2] * w;
+      for (let dy = 0; dy < sy; dy++) {
+        for (let dx = 0; dx < sx; dx++) {
+          const i = ((y * sy + dy) * w + x * sx + dx) * 4;
+          const wt = src[i + 3] + 1;
+          r += src[i] * wt;
+          g += src[i + 1] * wt;
+          b += src[i + 2] * wt;
           a += src[i + 3];
-          wsum += w;
+          wsum += wt;
         }
       }
-      const o = (y * ns + x) * 4;
+      const o = (y * nw + x) * 4;
       out[o] = r / wsum;
       out[o + 1] = g / wsum;
       out[o + 2] = b / wsum;
-      out[o + 3] = a / 4;
+      out[o + 3] = a / (sx * sy);
     }
   }
   return out;
 }
 
-function coverage(data: Uint8Array, size: number, x0: number, y0: number, q: number, scale: number): number {
+function coverage(data: Uint8Array, w: number, x0: number, y0: number, q: number, scale: number): number {
   let n = 0;
   for (let y = y0; y < y0 + q; y++) {
-    for (let x = x0; x < x0 + q; x++) if (data[(y * size + x) * 4 + 3] * scale >= 127.5) n++;
+    for (let x = x0; x < x0 + q; x++) if (data[(y * w + x) * 4 + 3] * scale >= 127.5) n++;
   }
   return n / (q * q);
 }
 
 /**
- * Alpha-tested foliage thins out in the smaller mip levels because averaging lowers alpha. Each quadrant's
+ * Alpha-tested foliage thins out in the smaller mip levels because averaging lowers alpha. Each tile's
  * alpha is scaled so the fraction of texels passing the test stays the same as in the full-size image.
  */
-function preserveCoverage(data: Uint8Array, size: number, target: number[]): void {
-  const q = size >> 1;
-  for (let k = 0; k < 4; k++) {
-    const x0 = (k % 2) * q, y0 = k < 2 ? 0 : q;
+function preserveCoverage(data: Uint8Array, w: number, target: number[]): void {
+  const q = w / COLS;
+  for (let k = 0; k < COLS * ROWS; k++) {
+    const x0 = (k % COLS) * q, y0 = Math.floor(k / COLS) * q;
     let lo = 1, hi = 6;
     for (let it = 0; it < 12; it++) {
       const mid = (lo + hi) / 2;
-      if (coverage(data, size, x0, y0, q, mid) < target[k]) lo = mid;
+      if (coverage(data, w, x0, y0, q, mid) < target[k]) lo = mid;
       else hi = mid;
     }
     const s = (lo + hi) / 2;
     for (let y = y0; y < y0 + q; y++) {
       for (let x = x0; x < x0 + q; x++) {
-        const i = (y * size + x) * 4 + 3;
+        const i = (y * w + x) * 4 + 3;
         data[i] = Math.min(255, Math.round(data[i] * s));
       }
     }
@@ -167,18 +257,23 @@ let atlas: THREE.DataTexture | null = null;
 
 export function foliageAtlas(): THREE.DataTexture {
   if (atlas) return atlas;
-  const S = TILE, W = S * 2;
+  const S = TILE, W = S * COLS, H = S * ROWS;
   const c = document.createElement('canvas');
-  c.width = c.height = W;
+  c.width = W;
+  c.height = H;
   const ctx = c.getContext('2d', { willReadFrequently: true })!;
-  ctx.clearRect(0, 0, W, W);
+  ctx.clearRect(0, 0, W, H);
   const rng = new RNG(4242);
-  for (let k = 0; k < 4; k++) paintLeafClump(ctx, (k % 2) * S, k < 2 ? 0 : S, S, rng, k);
-  const base = new Uint8Array(ctx.getImageData(0, 0, W, W).data);
-  // give fully transparent texels the quadrant's mean leaf colour so filtering never pulls in black
+  for (let k = 0; k < COLS * ROWS; k++) {
+    const ox = (k % COLS) * S, oy = Math.floor(k / COLS) * S;
+    if (k < GRASS_GREEN) paintLeafClump(ctx, ox, oy, S, rng, k);
+    else paintTuft(ctx, ox, oy, S, rng, k);
+  }
+  const base = new Uint8Array(ctx.getImageData(0, 0, W, H).data);
+  // give fully transparent texels the tile's mean leaf colour so filtering never pulls in black
   const target: number[] = [];
-  for (let k = 0; k < 4; k++) {
-    const x0 = (k % 2) * S, y0 = k < 2 ? 0 : S;
+  for (let k = 0; k < COLS * ROWS; k++) {
+    const x0 = (k % COLS) * S, y0 = Math.floor(k / COLS) * S;
     let r = 0, g = 0, b = 0, wsum = 0;
     for (let y = y0; y < y0 + S; y++) {
       for (let x = x0; x < x0 + S; x++) {
@@ -203,16 +298,17 @@ export function foliageAtlas(): THREE.DataTexture {
     }
     target.push(coverage(base, W, x0, y0, S, 1));
   }
-  const mipmaps: { data: Uint8Array; width: number; height: number }[] = [{ data: base, width: W, height: W }];
-  let cur: Uint8Array = base, size = W;
-  while (size > 1) {
-    const next = downsample(cur, size);
-    size >>= 1;
-    if (size >= 16) preserveCoverage(next, size, target);
-    mipmaps.push({ data: next, width: size, height: size });
+  const mipmaps: { data: Uint8Array; width: number; height: number }[] = [{ data: base, width: W, height: H }];
+  let cur: Uint8Array = base, w = W, h = H;
+  while (w > 1 || h > 1) {
+    const next = downsample(cur, w, h);
+    w = Math.max(1, w >> 1);
+    h = Math.max(1, h >> 1);
+    if (w / COLS >= 8) preserveCoverage(next, w, target);
+    mipmaps.push({ data: next, width: w, height: h });
     cur = next;
   }
-  const tex = new THREE.DataTexture(base, W, W, THREE.RGBAFormat, THREE.UnsignedByteType);
+  const tex = new THREE.DataTexture(base, W, H, THREE.RGBAFormat, THREE.UnsignedByteType);
   tex.mipmaps = mipmaps;
   tex.generateMipmaps = false;
   tex.minFilter = THREE.LinearMipmapLinearFilter;
@@ -227,7 +323,9 @@ export function foliageAtlas(): THREE.DataTexture {
 /** Direction towards the camera (30 degrees elevation, 45 degrees azimuth); cards lean towards it so canopies look full. */
 const VIEW = new THREE.Vector3(Math.cos(Math.PI / 6) * Math.SQRT1_2, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6) * Math.SQRT1_2);
 const UP = new THREE.Vector3(0, 1, 0);
-const INSET = 0.008;
+/** Keep samples 4 texels inside a tile so neighbouring tiles never bleed in. */
+const INSET_U = 4 / (TILE * COLS);
+const INSET_V = 4 / (TILE * ROWS);
 
 interface CardSpec {
   c: THREE.Vector3;
@@ -265,12 +363,12 @@ class CardBuilder {
     const t = t0.clone().multiplyScalar(cr).addScaledVector(b0, sr);
     const b = b0.clone().multiplyScalar(cr).addScaledVector(t0, -sr);
     const h = cd.size / 2;
-    const u0 = (cd.quad % 2) * 0.5, v0 = cd.quad < 2 ? 0 : 0.5;
+    const [u0, v0] = tileOrigin(cd.quad);
     const n = cd.n.clone().lerp(UP, 0.2).normalize();
     const corner = (sx: number, sy: number) => {
       const p = cd.c.clone().addScaledVector(t, sx * h).addScaledVector(b, sy * h);
       if (cd.droop && sy < 0) p.y -= cd.droop;
-      return { p, u: u0 + (sx < 0 ? INSET : 0.5 - INSET), v: v0 + (sy > 0 ? INSET : 0.5 - INSET) };
+      return { p, u: u0 + (sx < 0 ? INSET_U : DU - INSET_U), v: v0 + (sy > 0 ? INSET_V : DV - INSET_V) };
     };
     const vs = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
     for (const i of [0, 1, 2, 0, 2, 3]) this.vert(vs[i].p, n, vs[i].u, vs[i].v, cd.shade);
@@ -283,7 +381,8 @@ class CardBuilder {
   frond(base: THREE.Vector3, dir: THREE.Vector3, len: number, width: number, arch: number, droop: number, shade: number): void {
     const side = new THREE.Vector3(-dir.z, 0, dir.x);
     const segs = 4;
-    const u0 = 0, v0 = 0.5;
+    const [u0, v0] = tileOrigin(LEAF_FROND);
+    const uc = u0 + DU / 2;
     const spine: THREE.Vector3[] = [];
     for (let i = 0; i <= segs; i++) {
       const s = i / segs;
@@ -294,17 +393,17 @@ class CardBuilder {
     for (let i = 0; i < segs; i++) {
       const s0 = i / segs, s1 = (i + 1) / segs;
       const w0 = halfWidth(s0), w1 = halfWidth(s1);
-      const va = v0 + INSET + (0.5 - 2 * INSET) * s0, vb = v0 + INSET + (0.5 - 2 * INSET) * s1;
+      const va = v0 + INSET_V + (DV - 2 * INSET_V) * s0, vb = v0 + INSET_V + (DV - 2 * INSET_V) * s1;
       for (const sd of [-1, 1]) {
         const e0 = spine[i].clone().addScaledVector(side, sd * w0).addScaledVector(UP, -fold * w0);
         const e1 = spine[i + 1].clone().addScaledVector(side, sd * w1).addScaledVector(UP, -fold * w1);
-        const ue = sd < 0 ? u0 + INSET : u0 + 0.5 - INSET;
+        const ue = sd < 0 ? u0 + INSET_U : u0 + DU - INSET_U;
         const n = UP.clone().addScaledVector(side, sd * 0.35).addScaledVector(dir, 0.25).normalize();
         const quad = [
-          { p: spine[i], u: u0 + 0.25, v: va },
+          { p: spine[i], u: uc, v: va },
           { p: e0, u: ue, v: va },
           { p: e1, u: ue, v: vb },
-          { p: spine[i + 1], u: u0 + 0.25, v: vb },
+          { p: spine[i + 1], u: uc, v: vb },
         ];
         for (const k of [0, 1, 2, 0, 2, 3]) this.vert(quad[k].p, n, quad[k].u, quad[k].v, shade);
       }
@@ -430,6 +529,27 @@ export function treeParts(variant: number, sub: number): { trunk: THREE.BufferGe
   }
   for (const cd of cards) cb.card(cd, rng);
   return { trunk: g.build(), leaves: cb.build() };
+}
+
+/**
+ * A grass (or reed) tuft: three vertical cards crossing at 60 degrees, standing on the ground at the origin.
+ * Normals point up so tufts are lit like the ground they grow from; roots are darker.
+ */
+export function tuftGeometry(tile: number, width: number, height: number): THREE.BufferGeometry {
+  const cb = new CardBuilder();
+  const [u0, v0] = tileOrigin(tile);
+  for (let k = 0; k < 3; k++) {
+    const a = (k / 3) * Math.PI;
+    const dx = Math.cos(a) * width / 2, dz = Math.sin(a) * width / 2;
+    const quad = [
+      { p: new THREE.Vector3(-dx, 0, -dz), u: u0 + INSET_U, v: v0 + DV - INSET_V, s: 0.72 },
+      { p: new THREE.Vector3(dx, 0, dz), u: u0 + DU - INSET_U, v: v0 + DV - INSET_V, s: 0.72 },
+      { p: new THREE.Vector3(dx, height, dz), u: u0 + DU - INSET_U, v: v0 + INSET_V, s: 1.05 },
+      { p: new THREE.Vector3(-dx, height, -dz), u: u0 + INSET_U, v: v0 + INSET_V, s: 1.05 },
+    ];
+    for (const i of [0, 1, 2, 0, 2, 3]) cb.vert(quad[i].p, UP, quad[i].u, quad[i].v, quad[i].s);
+  }
+  return cb.build();
 }
 
 /** Leaf cards for a low forage bush. */

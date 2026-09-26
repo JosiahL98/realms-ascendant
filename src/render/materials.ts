@@ -30,6 +30,8 @@ export interface WorldMatOpts {
   sway?: boolean;
   /** Alpha-tested leaf cards textured from the foliage atlas; lit by their canopy normals on both sides. */
   leaves?: boolean;
+  /** Grass tufts: tops bend in the wind, roots stay put. */
+  grass?: boolean;
 }
 
 const materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -103,6 +105,19 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
           transformed.x += sin(uTime * 1.3 + ph) * 0.025 * h;
           transformed.z += cos(uTime * 1.1 + ph * 1.3) * 0.02 * h;
           ${opts.leaves ? `transformed += objectNormal * sin(uTime * 2.6 + dot(position, vec3(5.1, 3.7, 4.3)) + ph) * 0.018 * step(0.4, position.y);` : ''}
+        }
+      `;
+    }
+    if (opts.grass) {
+      swayCode += `
+        {
+          vec4 go = vec4(0.0, 0.0, 0.0, 1.0);
+          #ifdef USE_INSTANCING
+            go = instanceMatrix * go;
+          #endif
+          float gph = go.x * 0.6 + go.z * 0.35;
+          transformed.x += sin(uTime * 1.8 + gph) * 0.09 * position.y;
+          transformed.z += cos(uTime * 1.4 + gph * 1.2) * 0.06 * position.y;
         }
       `;
     }

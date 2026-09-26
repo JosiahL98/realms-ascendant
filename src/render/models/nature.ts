@@ -135,6 +135,16 @@ export function carcassModel(kind: string): THREE.BufferGeometry {
   return g.build();
 }
 
+/** A small half-buried rock or pair of rocks for ground clutter. */
+export function pebbleModel(sub: number): THREE.BufferGeometry {
+  const g = new GeoBuilder(950 + sub);
+  const cols = [0x78705f, 0x857c6a, 0x6a6356];
+  g.c(cols[sub % 3], 0.12).blob(0, 0.01, 0, 0.13, 0.3, 0.6, 6);
+  g.c(cols[(sub + 1) % 3], 0.12).blob(0.13, 0, 0.07, 0.07, 0.3, 0.65, 5);
+  if (sub === 1) g.c(cols[(sub + 2) % 3], 0.1).blob(-0.09, 0, 0.11, 0.05, 0.3, 0.6, 5);
+  return g.build();
+}
+
 export function fishModel(): THREE.BufferGeometry {
   const g = new GeoBuilder(900);
   g.c(0xb8c4cc, 0.08).sphere(0, 0, 0, 0.06, 6, 4, 0.5, 0.5, 1.6);
