@@ -193,6 +193,7 @@ export class TerrainView {
           col *= k;
           alpha = mix(alpha, 1.0, 1.0 - smoothstep(0.0, 0.3, fw));
           gl_FragColor = vec4(col, alpha);
+          #include <tonemapping_fragment>
           #include <colorspace_fragment>
         }
       `,

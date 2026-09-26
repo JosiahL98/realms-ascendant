@@ -83,8 +83,6 @@ export function felledModel(variant: number): THREE.BufferGeometry {
   g.push().translate(0, 0.1, 0.06).rotateX(Math.PI / 2 - 0.08);
   g.c(bark, 0.06).cyl(0, 0, 0, 0.1, 0.07, 1.15, 6);
   g.pop();
-  const leaf = variant === 1 ? 0x2c5230 : variant === 2 ? 0x4b862c : 0x4a7a2a;
-  g.c(leaf, 0.15).blob(0, 0.2, 1.25, 0.35, 0.25, 0.5, 6);
   return g.build();
 }
 
@@ -112,15 +110,17 @@ export function stoneModel(sub: number): THREE.BufferGeometry {
   return g.build();
 }
 
+/** Dark core and berries of a forage bush; the leaves are cards (see bushLeaves). */
 export function berryModel(sub: number): THREE.BufferGeometry {
   const g = new GeoBuilder(500 + sub);
-  g.c(0x35602a, 0.15).blob(0, 0.3, 0, 0.4, 0.25, 0.75, 7);
-  g.c(0x2c5224, 0.15).blob(0.18, 0.22, 0.15, 0.25, 0.25, 0.8, 6);
+  g.c(0x24421c, 0.15).blob(0, 0.26, 0, 0.3, 0.2, 0.75, 7);
+  g.c(0x203c1a, 0.15).blob(0.16, 0.2, 0.13, 0.2, 0.2, 0.8, 6);
   const rng = (i: number) => ((Math.sin(i * 91.7 + sub * 13.1) * 43758.5453) % 1 + 1) % 1;
-  for (let i = 0; i < 16; i++) {
-    const th = rng(i) * Math.PI * 2, ph = 0.3 + rng(i + 50) * 1.1;
-    const x = Math.cos(th) * Math.sin(ph) * 0.4, y = 0.3 + Math.cos(ph) * 0.3, z = Math.sin(th) * Math.sin(ph) * 0.4;
-    g.c(i % 3 ? 0xb01e3c : 0x6a1a5a, 0.1).sphere(x, y, z, 0.055, 5, 3);
+  for (let i = 0; i < 20; i++) {
+    const th = rng(i) * Math.PI * 2, ph = 0.25 + rng(i + 50) * 1.15;
+    const r = 0.38 + rng(i + 90) * 0.08;
+    const x = Math.cos(th) * Math.sin(ph) * r, y = 0.28 + Math.cos(ph) * r * 0.72, z = Math.sin(th) * Math.sin(ph) * r;
+    g.c(i % 3 ? 0xc0203e : 0x7a1a60, 0.1).sphere(x, y, z, 0.05, 5, 3);
   }
   return g.build();
 }

@@ -12,11 +12,12 @@ export class InstBatch {
   private parent: THREE.Object3D;
   private shadow: boolean;
   private receive: boolean;
+  private noAO: boolean;
   private clipArr: Float32Array | null = null;
   private tmpC = new THREE.Color();
 
   constructor(parent: THREE.Object3D, geo: THREE.BufferGeometry, mat: THREE.Material,
-    opts: { color?: boolean; clip?: boolean; cap?: number; shadow?: boolean; receive?: boolean } = {}) {
+    opts: { color?: boolean; clip?: boolean; cap?: number; shadow?: boolean; receive?: boolean; noAO?: boolean } = {}) {
     this.parent = parent;
     this.geo = geo;
     this.mat = mat;
@@ -24,6 +25,7 @@ export class InstBatch {
     this.hasClip = !!opts.clip;
     this.shadow = opts.shadow ?? true;
     this.receive = opts.receive ?? true;
+    this.noAO = !!opts.noAO;
     this.capacity = 0;
     this.mesh = this.create(opts.cap ?? 16, null);
   }
@@ -33,6 +35,8 @@ export class InstBatch {
     m.frustumCulled = false;
     m.castShadow = this.shadow;
     m.receiveShadow = this.receive;
+    // alpha-tested cards would occlude as solid quads in the AO pass
+    if (this.noAO) m.userData.noAO = true;
     m.count = 0;
     if (this.hasColor) m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3).fill(1), 3);
     if (this.hasClip) {

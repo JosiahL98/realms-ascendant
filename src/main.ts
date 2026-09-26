@@ -51,7 +51,20 @@ function applyDebug(s: Session): void {
     g.events.length = 0;
     g.map.refreshAll();
     const list = (params.get('list') ?? '').split(',').filter(Boolean);
-    if (gallery === 'units') {
+    if (gallery === 'trees') {
+      // one row per tree variant, the right half packed like a forest
+      for (let v = 0; v < 4; v++) {
+        for (let i = 0; i < 9; i++) {
+          const tx = Math.floor(cx - 10 + i * (i < 4 ? 2 : 1) + (i >= 4 ? 4 : 0)), tz = Math.floor(cz - 6 + v * 3);
+          for (let row = 0; row < (i >= 4 ? 2 : 1); row++) {
+            const r = g.addResource('tree', 'wood', 100, tx, tz + row, true);
+            r.variant = v;
+            r.rot = (i * 1.7 + row) % (Math.PI * 2);
+            r.scale = 0.9 + ((i * 7 + row * 3) % 5) * 0.05;
+          }
+        }
+      }
+    } else if (gallery === 'units') {
       list.forEach((id, i) => {
         const u = g.spawnUnit(id, i % 3 === 2 ? 2 : 1, cx - 8 + (i % 8) * 1.6, cz - 6 + Math.floor(i / 8) * 1.8);
         u.facing = u.pfacing = Number(params.get('face') ?? Math.PI / 4);

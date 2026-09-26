@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { foliageAtlas } from './models/foliage';
 
 /** Uniforms shared by every world material (fog of war, time, detail textures). */
 export const worldUniforms = {
@@ -27,6 +28,8 @@ export interface WorldMatOpts {
   emissive?: number;
   /** Gentle wind sway for foliage (vertex colors with high green). */
   sway?: boolean;
+  /** Alpha-tested leaf cards textured from the foliage atlas; lit by their canopy normals on both sides. */
+  leaves?: boolean;
 }
 
 const materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -45,6 +48,12 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
     depthWrite: opts.depthWrite ?? true,
   });
   if (opts.emissive) m.emissive = new THREE.Color(opts.emissive);
+  if (opts.leaves) {
+    m.map = foliageAtlas();
+    m.alphaTest = 0.5;
+    m.alphaToCoverage = true;
+    m.side = THREE.DoubleSide;
+  }
   m.onBeforeCompile = (shader) => {
     shader.uniforms.uFogTex = worldUniforms.uFogTex;
     shader.uniforms.uMapSize = worldUniforms.uMapSize;
@@ -93,6 +102,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
           float ph = so.x * 0.7 + so.z * 0.4;
           transformed.x += sin(uTime * 1.3 + ph) * 0.025 * h;
           transformed.z += cos(uTime * 1.1 + ph * 1.3) * 0.02 * h;
+          ${opts.leaves ? `transformed += objectNormal * sin(uTime * 2.6 + dot(position, vec3(5.1, 3.7, 4.3)) + ph) * 0.018 * step(0.4, position.y);` : ''}
         }
       `;
     }
@@ -115,6 +125,8 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
         varying vec3 vObjPos; varying vec3 vObjNormal; varying float vMatId;
       `;
     }
+    // leaf cards keep their outward canopy normal on the back face instead of flipping it
+    const leafNormal = opts.leaves ? `normal = normalize(vNormal);` : '';
     let clipCode = '';
     if (opts.clip) clipCode = `if (vLocalY > vClip) discard;`;
     let detailCode = '';
@@ -151,6 +163,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
       .replace('#include <common>', `#include <common>\n${fDecl}`)
       .replace('#include <clipping_planes_fragment>', `#include <clipping_planes_fragment>\n${clipCode}`)
       .replace('#include <color_fragment>', `#include <color_fragment>\n${detailCode}`)
+      .replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>\n${leafNormal}`)
       .replace('#include <opaque_fragment>', `#include <opaque_fragment>\n${fogCode}\n${fadeCode}`);
   };
   m.customProgramCacheKey = () => 'world:' + key;

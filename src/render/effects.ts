@@ -113,7 +113,12 @@ export class Effects {
         `,
         fragmentShader: `
           varying vec4 vC;
-          void main() { vec2 d = gl_PointCoord - 0.5; float r = length(d) * 2.0; if (r > 1.0) discard; float a = vC.a * (1.0 - r * r); gl_FragColor = vec4(vC.rgb, a); }
+          void main() {
+            vec2 d = gl_PointCoord - 0.5; float r = length(d) * 2.0; if (r > 1.0) discard;
+            float a = vC.a * (1.0 - r * r); gl_FragColor = vec4(vC.rgb, a);
+            #include <tonemapping_fragment>
+            #include <colorspace_fragment>
+          }
         `,
       });
       const pts = new THREE.Points(geo, m);

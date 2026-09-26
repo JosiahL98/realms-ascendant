@@ -11,7 +11,7 @@ import { Effects } from './effects';
 import { getRig } from './models/units';
 import { buildingModel } from './models/buildings';
 import type { TextureAssets } from './assets';
-import { PostFX, loadQuality, saveQuality, type GraphicsQuality } from './post';
+import { PostFX, installGrading, loadQuality, saveQuality, type GraphicsQuality } from './post';
 import { BUILDINGS } from '../data/buildings';
 
 export const CAM_ELEV = Math.PI / 6; // 30 degrees -> 2:1 diamonds
@@ -51,7 +51,9 @@ export class Renderer {
   private lastFrame = performance.now();
   selectedIds = new Set<number>();
   hoverId = 0;
-  post: PostFX;
+  /** Composer for the high-quality path; null when rendering straight to the canvas. */
+  post: PostFX | null = null;
+  quality: GraphicsQuality = 'medium';
 
   constructor(canvas: HTMLCanvasElement, game: Game, localPlayer: number, assets: TextureAssets | null = null) {
     this.game = game;
@@ -62,8 +64,10 @@ export class Renderer {
     this.gl.shadowMap.enabled = true;
     this.gl.shadowMap.type = THREE.PCFShadowMap;
     this.gl.outputColorSpace = THREE.SRGBColorSpace;
-    const tm = new URLSearchParams(location.search).get('tm') ?? 'neutral';
-    this.gl.toneMapping = tm === 'none' ? THREE.NoToneMapping : tm === 'agx' ? THREE.AgXToneMapping : tm === 'aces' ? THREE.ACESFilmicToneMapping : THREE.NeutralToneMapping;
+    installGrading();
+    const tm = new URLSearchParams(location.search).get('tm') ?? 'graded';
+    this.gl.toneMapping = tm === 'none' ? THREE.NoToneMapping : tm === 'agx' ? THREE.AgXToneMapping : tm === 'aces' ? THREE.ACESFilmicToneMapping
+      : tm === 'neutral' ? THREE.NeutralToneMapping : THREE.CustomToneMapping;
     this.gl.toneMappingExposure = Number(new URLSearchParams(location.search).get('exposure') ?? 1.08);
     this.scene.background = new THREE.Color(0x000000);
 
@@ -106,16 +110,21 @@ export class Renderer {
 
     // precompile a few common rigs
     for (const id of ['villager', 'villagerF', 'scout', 'sheep']) getRig(id);
-    const q = (new URLSearchParams(location.search).get('quality') as GraphicsQuality | null) ?? loadQuality();
-    this.post = new PostFX(this.gl, this.scene, this.camera, q);
     this.resize();
+    this.applyQuality((new URLSearchParams(location.search).get('quality') as GraphicsQuality | null) ?? loadQuality());
   }
 
   setQuality(q: GraphicsQuality): void {
     saveQuality(q);
-    this.post.dispose();
-    this.post = new PostFX(this.gl, this.scene, this.camera, q);
-    this.post.setSize(this.width, this.height);
+    this.applyQuality(q);
+  }
+
+  private applyQuality(q: GraphicsQuality): void {
+    this.quality = q;
+    this.post?.dispose();
+    this.post = q === 'high' ? new PostFX(this.gl, this.scene, this.camera) : null;
+    this.post?.setSize(this.width, this.height);
+    this.sun.castShadow = q !== 'low';
   }
 
   resize(): void {
@@ -366,7 +375,8 @@ export class Renderer {
     this.props.update(g, this.localTeam);
     this.fx.update(g, alpha, dt, now / 1000);
     this.updateSelectionFx(alpha);
-    this.post.render();
+    if (this.post) this.post.render();
+    else this.gl.render(this.scene, this.camera);
   }
 
   private updateSelectionFx(alpha: number): void {

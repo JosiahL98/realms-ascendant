@@ -56,7 +56,7 @@ export class Session {
     this.audio = audio;
     this.game = new Game(setup);
     this.local = setup.players.findIndex((p) => p.human) + 1 || 1;
-    root.innerHTML = `<canvas id="view"></canvas><canvas id="overlay"></canvas><div id="hud"></div>`;
+    root.innerHTML = `<canvas id="view"></canvas><div id="vignette"></div><canvas id="overlay"></canvas><div id="hud"></div>`;
     this.canvas = root.querySelector('#view') as HTMLCanvasElement;
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
     this.octx = this.overlay.getContext('2d')!;
@@ -102,7 +102,7 @@ export class Session {
     window.removeEventListener('resize', this.resize);
     this.input.dispose();
     this.audio.stopMusic();
-    this.renderer.post.dispose();
+    this.renderer.post?.dispose();
     this.renderer.gl.dispose();
   }
 
