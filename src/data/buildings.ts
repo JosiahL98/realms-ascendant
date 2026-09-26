@@ -48,6 +48,14 @@ add({
   description: 'Renewable food source. One villager farms each field. Exhausted farms are reseeded automatically if you can afford it.',
 });
 add({
+  id: 'dock', name: 'Dock', age: 0, cost: { wood: 150 }, buildTime: 35, hp: 1800, size: [3, 3],
+  meleeArmor: 0, pierceArmor: 7, los: 6, classes: B, dropoff: ['food'], naval: true, ageReqFor: 1,
+  trains: ['fishingShip', 'transportShip', 'tradeCog', 'galley', 'fireShip', 'demolitionShip', 'cannonGalleon'],
+  researches: ['gillnets', 'careening', 'dryDock', 'shipwright', 'warGalleyUp', 'galleonUp', 'fastFireShipUp', 'heavyDemoUp'],
+  model: 'dock', menu: 'eco', slot: 4,
+  description: 'Built on the shore. Trains ships and receives fish.',
+});
+add({
   id: 'barracks', name: 'Barracks', age: 0, cost: { wood: 175 }, buildTime: 50, hp: 1200, size: [3, 3],
   meleeArmor: 0, pierceArmor: 7, los: 5, classes: B, trains: ['militia', 'spearman'],
   researches: ['manAtArmsUp', 'longSwordsmanUp', 'twoHandedUp', 'championUp', 'pikemanUp', 'halberdierUp', 'squires', 'tracking', 'arson'],

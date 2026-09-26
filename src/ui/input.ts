@@ -352,6 +352,10 @@ export class Input {
       case 'convert':
         if (target && target.kind === 'unit') s.issue({ c: 'convert', units, target: target.id });
         break;
+      case 'unloadAt':
+        s.issue({ c: 'unloadAt', units, x: g.x, z: g.z });
+        fx.addMarker(g.x, g.z, performance.now() / 1000, 0x40ff40);
+        break;
       case 'rally': {
         const blds = s.selectedEntities().filter((e): e is Building => e.kind === 'building' && e.owner === s.local).map((b) => b.id);
         s.issue({ c: 'rally', buildings: blds, x: g.x, z: g.z, target: target && target.kind !== 'unit' ? target.id : 0 });
@@ -402,7 +406,13 @@ export class Input {
       s.audio.ackSound(units[0], kind);
     };
     if (!target) {
-      moveAll(units);
+      // loaded transports clicked onto land put their troops ashore there
+      const onLand = !game.map.tileWater(Math.floor(x), Math.floor(z));
+      const transports = units.filter((u) => u.def.transport && u.cargo.length);
+      if (onLand && transports.length) {
+        s.issue({ c: 'unloadAt', units: ids(transports), x, z });
+        moveAll(units.filter((u) => !transports.includes(u)));
+      } else moveAll(units);
       fx.addMarker(x, z, now, 0x40ff40);
       ack('move');
       return;
@@ -433,6 +443,13 @@ export class Input {
       // own / allied unit
       if (monks.length && t.hp < t.stats.hp) s.issue({ c: 'heal', units: ids(monks), target: t.id });
       else moveAll(monks);
+      if (t.def.transport && t.owner === me) {
+        const land = units.filter((u) => !u.def.naval);
+        if (land.length) s.issue({ c: 'garrison', units: ids(land), target: t.id });
+        fx.addMarker(t.x, t.z, now, 0x40ff40);
+        ack('move');
+        return;
+      }
       if (t.def.garrisonCapacity && t.owner === me) {
         const inf = [...others, ...vills].filter((u) => u.def.classes.includes('infantry'));
         if (inf.length) s.issue({ c: 'garrison', units: ids(inf), target: t.id });
@@ -476,8 +493,11 @@ export class Input {
         else moveAll(monks);
       }
       if (traders.length) {
-        if (b.type === 'market' && b.built) s.issue({ c: 'trade', units: ids(traders), target: b.id });
-        else moveAll(traders);
+        const carts = traders.filter((u) => !u.def.naval), cogs = traders.filter((u) => u.def.naval);
+        if (b.type === 'market' && b.built && carts.length) s.issue({ c: 'trade', units: ids(carts), target: b.id });
+        else moveAll(carts);
+        if (b.type === 'dock' && b.built && cogs.length) s.issue({ c: 'trade', units: ids(cogs), target: b.id });
+        else moveAll(cogs);
       }
       if (others.length) {
         const garr = others.filter((u) => b.owner === me && canGarrisonIn(game, u, b));

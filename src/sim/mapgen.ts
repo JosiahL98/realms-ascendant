@@ -427,6 +427,41 @@ export function generateMap(game: Game): void {
     }
   }
 
+  /* ---------------- Fish ---------------- */
+  const isWaterT = (x: number, z: number) => map.inBounds(x, z) && (map.terrain[z * n + x] === T.water || map.terrain[z * n + x] === T.deep);
+  const landWithin = (x: number, z: number, r: number): boolean => {
+    for (let dz = -r; dz <= r; dz++)
+      for (let dx = -r; dx <= r; dx++) {
+        const xx = x + dx, zz = z + dz;
+        if (map.inBounds(xx, zz) && !isWaterT(xx, zz)) return true;
+      }
+    return false;
+  };
+  const fishAt: { x: number; z: number }[] = [];
+  const farFromFish = (x: number, z: number, d: number) => fishAt.every((f) => Math.hypot(f.x - x, f.z - z) >= d);
+  const addFish = (x: number, z: number, amount: number) => {
+    const r = game.addResource('fish', 'fish', amount, x, z, false);
+    r.rot = rng.range(0, Math.PI * 2);
+    fishAt.push({ x, z });
+  };
+  for (const s of startList) {
+    let placed = 0;
+    for (let i = 0; i < 500 && placed < 4; i++) {
+      const x = s.x + rng.int(-24, 24), z = s.z + rng.int(-24, 24);
+      if (!isWaterT(x, z) || !landWithin(x, z, 1)) continue;
+      if (Math.hypot(x - s.x, z - s.z) < 8 || !farFromFish(x, z, 2.5)) continue;
+      addFish(x, z, 200);
+      placed++;
+    }
+  }
+  const deepCount = style.sea ? np * 5 : style.lakes ? 2 * style.lakes : style.rivers ? np * 2 : 2;
+  for (let i = 0, placed = 0; i < 3000 && placed < deepCount; i++) {
+    const x = rng.int(2, n - 3), z = rng.int(2, n - 3);
+    if (!isWaterT(x, z) || landWithin(x, z, style.sea ? 3 : 1) || !farFromFish(x, z, 5)) continue;
+    addFish(x, z, 250);
+    placed++;
+  }
+
   map.refreshAll();
   ensureConnectivity(game, startList);
 }

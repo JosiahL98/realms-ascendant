@@ -15,6 +15,7 @@ interface Batch {
 }
 
 interface Corpse {
+  type: string;
   model: string;
   owner: number;
   x: number;
@@ -86,7 +87,7 @@ export class UnitView {
   addCorpse(game: Game, type: string, owner: number, x: number, z: number, facing: number): void {
     const def = UNITS[type];
     if (!def) return;
-    this.corpses.push({ model: def.model, owner, x, z, facing, t0: game.time });
+    this.corpses.push({ type, model: def.model, owner, x, z, facing, t0: game.time });
   }
 
   update(game: Game, alpha: number, localTeam: number, inView: (x: number, z: number) => boolean, colorOf: (owner: number) => number): void {
@@ -108,7 +109,7 @@ export class UnitView {
       let model = u.def.model;
       if (model === 'villager' && u.id % 2 === 1) model = 'villagerF';
       const facing = lerpAngle(u.pfacing, u.facing, alpha);
-      const y = u.def.animal ? game.map.heightAt(x, z) : Math.max(game.map.heightAt(x, z), game.map.waterLevel - 0.25);
+      const y = u.def.naval ? game.map.waterLevel : u.def.animal ? game.map.heightAt(x, z) : Math.max(game.map.heightAt(x, z), game.map.waterLevel - 0.25);
       const moving = Math.abs(u.x - u.px) + Math.abs(u.z - u.pz) > 1e-4;
       const carry = u.carryAmount > 0.5 ? u.carryType : null;
       this.drawOne(model, x, y, z, facing, {
@@ -134,7 +135,8 @@ export class UnitView {
       const vx = Math.floor(c.x), vz = Math.floor(c.z);
       if (vis && game.teamOf[c.owner] !== localTeam && (vx < 0 || vz < 0 || vx >= n || vz >= n || !vis[vz * n + vx])) continue;
       const sink = age > 9 ? (age - 9) * 0.06 : 0;
-      const y = game.map.heightAt(c.x, c.z) - sink;
+      const naval = UNITS[c.type]?.naval;
+      const y = (naval ? game.map.waterLevel : game.map.heightAt(c.x, c.z)) - sink;
       this.drawOne(c.model, c.x, y, c.z, c.facing, {
         anim: 'die', t: age, time, speed: 0, moving: false, attackDelay: 0.4, reload: 1, tool: null, seed: 0, packed: true,
       }, colorOf(c.owner), null, false, false, age > 9 ? Math.max(0.01, 1 - (age - 9) / 5) : 1);

@@ -40,9 +40,9 @@ export function computeButtons(s: Session): CmdButton[] {
   const out: CmdButton[] = [];
 
   if (units.length) {
-    const vills = units.filter((u) => u.def.gatherer);
+    const vills = units.filter((u) => u.def.builder);
     // any villager in the selection gives access to the build menus
-    const allVills = vills.length > 0 && units.every((u) => u.def.gatherer || !u.def.monk);
+    const allVills = vills.length > 0 && units.every((u) => u.def.builder || !u.def.monk);
     if (allVills && s.panelMode !== 'main') {
       const menu = s.panelMode === 'buildEco' ? 'eco' : 'mil';
       for (const def of BUILDING_LIST) {
@@ -75,6 +75,16 @@ export function computeButtons(s: Session): CmdButton[] {
       return out;
     }
     const ids = units.map((u) => u.id);
+    // civilian ships: fishing boats, cogs, transports
+    if (units.every((u) => u.def.naval && u.stats.attack <= 0)) {
+      out.push({ slot: 4, icon: glyphIcon('stop', 'cmd'), title: 'Stop', enabled: true, action: () => s.issue({ c: 'stop', units: ids }) });
+      if (units.some((u) => u.def.transport)) {
+        const loaded = units.some((u) => u.cargo.length);
+        out.push({ slot: 12, icon: glyphIcon('unload', 'cmd'), title: 'Unload', desc: 'Choose a shore to unload the troops (or right-click land).', enabled: loaded, reason: 'The transport is empty', action: () => s.beginTargeting('unloadAt') });
+      }
+      out.push({ slot: 14, icon: glyphIcon('delete', 'cmd'), title: 'Delete', desc: 'Scuttle the selected ships.', enabled: true, action: () => s.deleteSelected() });
+      return out;
+    }
     const stance = units[0].stance;
     out.push({ slot: 0, icon: glyphIcon('attackMove', 'cmd'), title: 'Attack Move', desc: 'Move to a point, attacking any enemies met on the way.', enabled: true, action: () => s.beginTargeting('attackMove') });
     out.push({ slot: 1, icon: glyphIcon('patrol', 'cmd'), title: 'Patrol', desc: 'Patrol between here and a point, engaging enemies.', enabled: true, action: () => s.beginTargeting('patrol') });

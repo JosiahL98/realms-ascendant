@@ -39,10 +39,19 @@ export class Pathfinder {
     this.heap = new MinHeap(4096);
   }
 
+  /** When true, passability is evaluated for ships. */
+  private naval = false;
+
+  setDomain(naval: boolean): this {
+    this.naval = naval;
+    return this;
+  }
+
   private pass(x: number, z: number, team: number): boolean {
     const m = this.map;
     if (x < 0 || z < 0 || x >= m.n || z >= m.n) return false;
     const i = z * m.n + x;
+    if (this.naval) return m.navalBlocked[i] === 0;
     if (m.landBlocked[i] === 0) return true;
     const go = m.gateOwner[i];
     return go >= 0 && this.teamOf[go] === team;

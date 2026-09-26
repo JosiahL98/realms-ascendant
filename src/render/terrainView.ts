@@ -164,23 +164,28 @@ export class TerrainView {
           float h = texture2D(uHeight, (p + 0.5) / (uMapSize + 1.0)).r;
           float depth = uWaterLevel - h;
           if (depth < -0.01) discard;
-          vec2 a = p * 0.09 + vec2(uTime * 0.012, uTime * 0.008);
-          vec2 b = p * 0.21 - vec2(uTime * 0.018, -uTime * 0.011);
+          // gently scrolling swells
+          vec2 a = p * 0.045 + vec2(uTime * 0.010, uTime * 0.006);
+          vec2 b = p * 0.11 - vec2(uTime * 0.013, -uTime * 0.009);
           float n1 = texture2D(uNoise, a).g;
           float n2 = texture2D(uNoise, b).b;
-          float wave = n1 * 0.6 + n2 * 0.4;
-          vec3 shallow = vec3(0.09, 0.27, 0.36);
-          vec3 deep = vec3(0.025, 0.08, 0.2);
-          vec3 col = mix(shallow, deep, smoothstep(0.0, 1.6, depth));
-          col *= 0.8 + wave * 0.4;
-          // glints
-          float g = smoothstep(0.72, 0.9, n1 * n2 * 1.9 + 0.1 * sin(uTime * 1.3 + p.x));
-          col += vec3(0.4, 0.45, 0.42) * g * 0.25;
-          // shore foam
-          float foam = smoothstep(0.12, 0.0, depth) * (0.5 + 0.5 * sin(uTime * 1.6 + n1 * 12.0));
-          col = mix(col, vec3(0.7, 0.78, 0.76), foam * 0.55);
-          float alpha = mix(0.35, 0.93, smoothstep(0.0, 0.7, depth));
-          alpha = max(alpha, foam * 0.8);
+          float e = 0.02;
+          float nx = texture2D(uNoise, b + vec2(e, 0.0)).b - n2;
+          float nz = texture2D(uNoise, b + vec2(0.0, e)).b - n2;
+          vec3 nrm = normalize(vec3(-nx * 6.0, 1.0, -nz * 6.0));
+          vec3 viewDir = normalize(vec3(0.61, 0.5, 0.61));
+          vec3 shallow = vec3(0.12, 0.36, 0.42);
+          vec3 deep = vec3(0.04, 0.14, 0.3);
+          vec3 col = mix(shallow, deep, smoothstep(0.0, 1.8, depth));
+          col *= 0.9 + (n1 - 0.5) * 0.3 + (n2 - 0.5) * 0.16;
+          float spec = pow(max(dot(reflect(-uSunDir, nrm), viewDir), 0.0), 60.0);
+          col += vec3(0.55, 0.55, 0.45) * spec * 0.35;
+          // shore foam bands
+          float band = sin(depth * 40.0 - uTime * 1.5 + n1 * 6.0) * 0.5 + 0.5;
+          float foam = smoothstep(0.1, 0.0, depth) * (0.35 + 0.4 * band);
+          col = mix(col, vec3(0.72, 0.78, 0.76), foam * 0.6);
+          float alpha = mix(0.45, 0.94, smoothstep(0.0, 0.6, depth));
+          alpha = max(alpha, foam * 0.7);
           float fw = texture2D(uFogTex, p / uMapSize).r;
           float k = fw < 0.5 ? fw * 0.62 : mix(0.31, 1.0, (fw - 0.5) * 2.0);
           col *= k;

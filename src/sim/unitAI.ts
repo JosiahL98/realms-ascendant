@@ -137,6 +137,7 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
     }
   }
   const team = game.teamOf[u.owner];
+  game.pathfinder.setDomain(!!u.def.naval);
   let ax = gx, az = gz;
   if (rect) {
     ax = clamp(u.x, rect.x0, rect.x1);
@@ -173,7 +174,22 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
         ? { x0: rect.x0, z0: rect.z0, x1: rect.x1, z1: rect.z1, range: Math.max(0, range) }
         : { x0: gx, z0: gz, x1: gx, z1: gz, range: Math.max(0, range - 0.5) };
       const res = pf.findPath(u.x, u.z, goal, team);
+      const dbg = (globalThis as unknown as { __pathStats?: Map<string, number> }).__pathStats;
+      if (dbg) {
+        const tgt = 'target' in u.order ? game.get((u.order as { target: number }).target) : undefined;
+        const key = `${u.type}:${u.order.t}:${u.returning ? 'ret' : tgt ? (tgt.kind === 'resource' ? tgt.type : tgt.kind === 'building' ? tgt.type : tgt.type) : '-'}:${res.reached ? 'ok' : 'unreach'}`;
+        dbg.set(key, (dbg.get(key) ?? 0) + 1);
+      }
       if (res.reached && res.path.length === 0) res.path = [ax, az];
+      // unreachable and already standing at the closest reachable spot: give up now
+      if (!res.reached) {
+        const ex = res.path.length ? res.path[res.path.length - 2] : u.x, ez = res.path.length ? res.path[res.path.length - 1] : u.z;
+        if (Math.hypot(ex - u.x, ez - u.z) < 0.6) {
+          u.navFailed = 2;
+          u.path = [];
+          return 'failed';
+        }
+      }
       u.path = res.path;
       u.pathIdx = 0;
       u.navGoalX = gx;
@@ -308,6 +324,9 @@ export function updateUnit(game: Game, u: Unit, dt: number): void {
     case 'flee':
       doFlee(game, u, o, dt);
       break;
+    case 'unload':
+      doUnload(game, u, o, dt);
+      break;
     case 'unpack':
       if (u.def.packs && u.packed) {
         u.packTimer = 3.5;
@@ -332,6 +351,8 @@ function canAttackUnit(u: Unit, v: Unit): boolean {
   if (u.def.classes.includes('ram')) return v.def.classes.includes('siege');
   if (u.def.packs) return false;
   if (u.stats.attack <= 0) return false;
+  // melee units cannot reach across the shoreline
+  if (u.stats.range < 1 && !!u.def.naval !== !!v.def.naval) return false;
   return true;
 }
 
@@ -620,6 +641,22 @@ function strike(game: Game, u: Unit, t: Unit | Building): void {
     });
     return;
   }
+  if (u.def.selfDestruct) {
+    // demolition ship: blast everything around the target, then sink
+    const r = u.stats.splash || 2;
+    game.spatial.query(t.x, t.z, r + 0.6, (v) => {
+      if (!v.alive || v === u || v.garrisonedIn) return;
+      if (Math.hypot(v.x - t.x, v.z - t.z) > r + v.radius) return;
+      dealDamage(game, v, computeDamage(atk, v), u.owner, u);
+    });
+    for (const b of game.buildings) {
+      if (!b.alive || b.owner === u.owner) continue;
+      if (distToRect(t.x, t.z, b.tx, b.tz, b.tx + b.w, b.tz + b.h) <= r) dealDamage(game, b, computeDamage(atk, b), u.owner, u);
+    }
+    game.events.push({ e: 'hit', x: t.x, z: t.z, kind: 'splash', owner: u.owner });
+    game.killUnit(u, 0);
+    return;
+  }
   const dmg = computeDamage(atk, t, elevationMult(game, u.x, u.z, t.x, t.z));
   dealDamage(game, t, dmg, u.owner, u);
   game.events.push({ e: 'hit', x: t.x, z: t.z, kind: t.kind === 'building' ? 'building' : 'melee', owner: u.owner });
@@ -726,7 +763,7 @@ function returnResources(game: Game, u: Unit, dt: number): boolean {
   }
   let b = game.building(u.dropId);
   if (!b || !b.alive || !b.built || !b.def.dropoff?.includes(u.carryType)) {
-    b = game.nearestDropoff(u.owner, u.carryType, u.x, u.z) ?? undefined;
+    b = game.nearestDropoff(u.owner, u.carryType, u.x, u.z, !!u.def.naval, u.badDropId) ?? undefined;
     u.dropId = b ? b.id : 0;
     resetNav(u);
   }
@@ -735,16 +772,19 @@ function returnResources(game: Game, u: Unit, dt: number): boolean {
     u.setAnim('idle', game.time);
     return false;
   }
-  const s = navigate(game, u, b.x, b.z, u.radius + 0.25, rectOf(b), dt);
+  const s = navigate(game, u, b.x, b.z, u.radius + (u.def.naval ? 0.75 : 0.25), rectOf(b), dt);
   if (s === 'arrived') {
     deposit(game, u);
     u.returning = false;
     u.dropId = 0;
+    u.badDropId = 0;
     u.farmMoveAt = -1;
     resetNav(u);
     return true;
   }
   if (s === 'failed') {
+    // try a different drop-off next time
+    u.badDropId = u.dropId;
     u.dropId = 0;
     resetNav(u);
     u.repathAt = game.time + 1;
@@ -770,7 +810,8 @@ function findNextResource(game: Game, u: Unit, kind: GatherKind, x: number, z: n
     }
     return best;
   }
-  const r = game.findResource(kind, x, z, kind === 'wood' ? 12 : 9, exclude);
+  const body = u.def.naval ? game.map.bodyAt(u.x, u.z) : 0;
+  const r = game.findResource(kind, x, z, kind === 'fish' ? (u.def.naval ? 40 : 6) : kind === 'wood' ? 12 : 9, exclude, body);
   if (r) return r;
   if (kind === 'herd') {
     let best: Unit | null = null;
@@ -888,6 +929,11 @@ function doGather(game: Game, u: Unit, o: Extract<Order, { t: 'gather' }>, dt: n
     gx = t.x;
     gz = t.z;
     range = rect ? u.radius + 0.12 : u.radius + 0.35;
+    if (kind === 'fish') range = u.def.naval ? u.radius + 0.5 : 1.7;
+    if (u.def.fisher && kind !== 'fish') {
+      finishOrder(game, u);
+      return;
+    }
   }
 
   const res = GATHER_RES[kind];
@@ -901,7 +947,7 @@ function doGather(game: Game, u: Unit, o: Extract<Order, { t: 'gather' }>, dt: n
   u.lastGatherX = t.x;
   u.lastGatherZ = t.z;
   u.tool = toolFor(kind);
-  const cap = p.carryCapacity(kind);
+  const cap = p.carryCapacity(kind) + (u.def.fisher ? 5 : 0);
   if (u.carryAmount >= cap - 1e-6) {
     u.returning = true;
     u.dropId = 0;
@@ -1202,19 +1248,32 @@ function doGarrison(game: Game, u: Unit, o: Extract<Order, { t: 'garrison' }>, d
     return;
   }
   if (t.kind === 'unit') {
-    // rams carry infantry
-    const cap = t.def.garrisonCapacity ?? 0;
-    if (t.owner !== u.owner || !u.def.classes.includes('infantry') || t.cargo.length >= cap) {
+    // rams carry infantry; transport ships carry any land unit
+    const p = game.players[u.owner];
+    const cap = (t.def.garrisonCapacity ?? 0) + (t.def.transport ? (p.hasFlag('careening') ? 5 : 0) + (p.hasFlag('dryDock') ? 5 : 0) : 0);
+    const allowed = t.def.transport ? !u.def.naval : u.def.classes.includes('infantry');
+    if (t.owner !== u.owner || !allowed || t.cargo.length >= cap) {
       finishOrder(game, u);
       return;
     }
-    const s = navigate(game, u, t.x, t.z, u.radius + t.radius + 0.2, null, dt);
-    if (s === 'arrived') {
+    const reach = u.radius + t.radius + (t.def.transport ? 1.3 : 0.2);
+    const dist = Math.hypot(t.x - u.x, t.z - u.z);
+    if (dist <= reach) {
       u.garrisonedIn = t.id;
       t.cargo.push(u.id);
       halt(u);
       u.order = { t: 'idle' };
-    } else if (s === 'failed') finishOrder(game, u);
+      return;
+    }
+    const s = navigate(game, u, t.x, t.z, reach - 0.05, null, dt);
+    if (s === 'failed') {
+      if (t.def.transport) {
+        // wait at the shore for the ship
+        halt(u);
+        resetNav(u);
+        u.repathAt = game.time + 1;
+      } else finishOrder(game, u);
+    }
     return;
   }
   if (t.kind !== 'building') {
@@ -1250,6 +1309,7 @@ function doGarrison(game: Game, u: Unit, o: Extract<Order, { t: 'garrison' }>, d
 
 export function ungarrison(game: Game, b: Building, onlyId = 0): void {
   const keep: number[] = [];
+  game.pathfinder.setDomain(false);
   let i = 0;
   for (const id of b.garrison) {
     if (onlyId && id !== onlyId) {
@@ -1284,8 +1344,9 @@ export function ungarrison(game: Game, b: Building, onlyId = 0): void {
   b.garrison = keep;
 }
 
-export function unloadCargo(game: Game, carrier: Unit): void {
+export function unloadCargo(game: Game, carrier: Unit, tx?: number, tz?: number): void {
   let i = 0;
+  game.pathfinder.setDomain(false);
   for (const id of carrier.cargo) {
     const u = game.unit(id);
     if (!u) continue;
@@ -1296,9 +1357,33 @@ export function unloadCargo(game: Game, carrier: Unit): void {
       u.x = u.px = p.x;
       u.z = u.pz = p.z;
     }
-    u.order = { t: 'idle' };
+    u.order = tx !== undefined && tz !== undefined ? { t: 'move', x: tx + (game.rng.next() - 0.5) * 1.5, z: tz + (game.rng.next() - 0.5) * 1.5 } : { t: 'idle' };
+    resetNav(u);
   }
   carrier.cargo = [];
+}
+
+/** Transport: sail toward a shore point and put the troops ashore. */
+function doUnload(game: Game, u: Unit, o: Extract<Order, { t: 'unload' }>, dt: number): void {
+  if (!u.cargo.length) {
+    finishOrder(game, u);
+    return;
+  }
+  // close enough to land near the target?
+  game.pathfinder.setDomain(false);
+  const land = game.pathfinder.nearestPassable(u.x, u.z, game.teamOf[u.owner], 2);
+  const nearTarget = Math.hypot(o.x - u.x, o.z - u.z) < 4;
+  if (land && (nearTarget || Math.hypot(land.x - u.x, land.z - u.z) < 1.6) && Math.hypot(o.x - u.x, o.z - u.z) < 9) {
+    halt(u);
+    unloadCargo(game, u, o.x, o.z);
+    finishOrder(game, u);
+    return;
+  }
+  const s = navigate(game, u, o.x, o.z, 1.2, null, dt);
+  if (s !== 'moving') {
+    if (land && Math.hypot(land.x - u.x, land.z - u.z) < 2.5) unloadCargo(game, u, o.x, o.z);
+    finishOrder(game, u);
+  }
 }
 
 /* ====================================================================== */
@@ -1412,11 +1497,12 @@ function doRelic(game: Game, u: Unit, o: Extract<Order, { t: 'relic' }>, dt: num
 function doTrade(game: Game, u: Unit, o: Extract<Order, { t: 'trade' }>, dt: number): void {
   const dest = game.building(o.target);
   let home = game.building(u.tradeHome);
-  if (!home || !home.alive || home.type !== 'market') {
+  const hub = u.def.naval ? 'dock' : 'market';
+  if (!home || !home.alive || home.type !== hub) {
     let best: Building | null = null;
     let bd = Infinity;
     for (const b of game.buildings) {
-      if (!b.alive || !b.built || b.type !== 'market' || b.owner !== u.owner || b === dest) continue;
+      if (!b.alive || !b.built || b.type !== hub || b.owner !== u.owner || b === dest) continue;
       const d = Math.hypot(b.x - u.x, b.z - u.z);
       if (d < bd) {
         bd = d;
@@ -1426,7 +1512,7 @@ function doTrade(game: Game, u: Unit, o: Extract<Order, { t: 'trade' }>, dt: num
     home = best ?? undefined;
     u.tradeHome = home ? home.id : 0;
   }
-  if (!dest || !dest.alive || !dest.built || !home || dest.type !== 'market' || !game.isAlly(u.owner, dest.owner)) {
+  if (!dest || !dest.alive || !dest.built || !home || dest.type !== hub || !game.isAlly(u.owner, dest.owner)) {
     finishOrder(game, u);
     return;
   }
@@ -1477,7 +1563,7 @@ function animalIdle(game: Game, u: Unit, dt: number): void {
     if (a === 'boar' && game.rng.next() < 0.6) return;
     const r = a === 'wolf' ? 3 : a === 'deer' ? 2 : 1;
     const nx = u.homeX + game.rng.range(-r, r), nz = u.homeZ + game.rng.range(-r, r);
-    if (game.pathfinder.isPassable(nx, nz, 0)) {
+    if (game.pathfinder.setDomain(false).isPassable(nx, nz, 0)) {
       u.order = { t: 'move', x: nx, z: nz };
       resetNav(u);
     }
@@ -1507,8 +1593,9 @@ export function resolveCollisions(game: Game): void {
     let px = 0, pz = 0;
     const r = u.radius;
     const mu = mass(u);
-    game.spatial.query(u.x, u.z, r + 0.6, (v, d2) => {
-      if (v === u || !v.alive || v.garrisonedIn) return;
+    const naval = !!u.def.naval;
+    game.spatial.query(u.x, u.z, r + 0.8, (v, d2) => {
+      if (v === u || !v.alive || v.garrisonedIn || !!v.def.naval !== naval) return;
       const rr = (r + v.radius) * 0.9;
       if (d2 >= rr * rr) return;
       let d = Math.sqrt(d2);
@@ -1536,6 +1623,7 @@ export function resolveCollisions(game: Game): void {
       pz *= maxPush / pl;
     }
     const team = game.teamOf[u.owner];
+    pf.setDomain(naval);
     const nx = u.x + px, nz = u.z + pz;
     if (pf.isPassable(nx, nz, team)) {
       u.x = nx;
@@ -1543,6 +1631,7 @@ export function resolveCollisions(game: Game): void {
     } else if (pf.isPassable(nx, u.z, team)) u.x = nx;
     else if (pf.isPassable(u.x, nz, team)) u.z = nz;
   }
+  pf.setDomain(false);
   // keep inside the map
   const n = game.map.n;
   for (const u of game.units) {

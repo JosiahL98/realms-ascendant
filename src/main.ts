@@ -4,6 +4,7 @@ import { Session } from './ui/session';
 import { Menus } from './ui/menus';
 import { AudioSys } from './audio/audio';
 import { AIPlayer } from './ai/ai';
+import { issueCommand } from './sim/commands';
 
 const app = document.getElementById('app')!;
 const audio = new AudioSys();
@@ -68,6 +69,34 @@ function applyDebug(s: Session): void {
     }
     g.vision.update(false);
     s.renderer.centerOn(Number(params.get('cx') ?? cx), Number(params.get('cz') ?? cz));
+  }
+  if (params.get('battle')) {
+    const cx = g.map.n / 2, cz = g.map.n / 2;
+    for (const r of [...g.resources]) if (Math.abs(r.x - cx) < 14 && Math.abs(r.z - cz) < 14) g.removeResource(r);
+    g.map.refreshAll();
+    const armyA = (params.get('a') ?? 'longSwordsman*8,crossbowman*6,knight*4,warElephant*2,mangonel*1').split(',');
+    const armyB = (params.get('b') ?? 'pikeman*8,archer*6,camel*4,legionary*4,scorpion*1').split(',');
+    const spawn = (list: string[], owner: number, x0: number, dir: number) => {
+      const ids: number[] = [];
+      let row = 0;
+      for (const item of list) {
+        const [id, n] = item.split('*');
+        for (let i = 0; i < Number(n ?? 1); i++) {
+          const u = g.spawnUnit(id, owner, x0 + dir * row * 1.1, cz - 4 + i * 0.9);
+          u.facing = u.pfacing = dir > 0 ? Math.PI / 2 : -Math.PI / 2;
+          ids.push(u.id);
+        }
+        row++;
+      }
+      return ids;
+    };
+    const a = spawn(armyA, 1, cx - 6, -1);
+    const b = spawn(armyB, 2, cx + 6, 1);
+    g.recomputePop(1);
+    g.recomputePop(2);
+    issueCommand(g, 1, { c: 'move', units: a, x: cx + 8, z: cz, attackMove: true });
+    issueCommand(g, 2, { c: 'move', units: b, x: cx - 8, z: cz, attackMove: true });
+    s.renderer.centerOn(cx, cz);
   }
   if (params.get('fast')) {
     // simulate ahead quickly (for testing AI and mid-game visuals)

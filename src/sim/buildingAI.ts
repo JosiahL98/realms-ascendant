@@ -136,13 +136,14 @@ function findBuildingTarget(game: Game, b: Building, range: number, minRange: nu
 }
 
 /** Find a free tile next to the building, preferring the side facing (tx,tz). */
-export function exitPoint(game: Game, b: Building, tx: number, tz: number, team: number): { x: number; z: number } {
+export function exitPoint(game: Game, b: Building, tx: number, tz: number, team: number, naval = false): { x: number; z: number } {
   const ex = clamp(tx, b.tx - 0.5, b.tx + b.w + 0.5);
   const ez = clamp(tz, b.tz - 0.5, b.tz + b.h + 0.5);
   // push the point just outside the footprint
   let px = ex, pz = ez;
   if (px > b.tx && px < b.tx + b.w && pz > b.tz && pz < b.tz + b.h) pz = b.tz + b.h + 0.5;
-  const p = game.pathfinder.nearestPassable(px, pz, team, 10);
+  const p = game.pathfinder.setDomain(naval).nearestPassable(px, pz, team, 10);
+  game.pathfinder.setDomain(false);
   return p ?? { x: b.x, z: b.tz + b.h + 0.5 };
 }
 
@@ -151,7 +152,7 @@ function spawnTrained(game: Game, b: Building, type: string): void {
   const team = game.teamOf[b.owner];
   const rx = b.rally ? b.rally.x : b.x + 1;
   const rz = b.rally ? b.rally.z : b.tz + b.h + 2;
-  const pos = exitPoint(game, b, rx, rz, team);
+  const pos = exitPoint(game, b, rx, rz, team, !!UNITS[type].naval);
   const jitter = () => (game.rng.next() - 0.5) * 0.3;
   const u = game.spawnUnit(type, b.owner, pos.x + jitter(), pos.z + jitter());
   u.facing = Math.atan2(rx - u.x, rz - u.z);

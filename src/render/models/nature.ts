@@ -135,6 +135,13 @@ export function carcassModel(kind: string): THREE.BufferGeometry {
   return g.build();
 }
 
+export function fishModel(): THREE.BufferGeometry {
+  const g = new GeoBuilder(900);
+  g.c(0xb8c4cc, 0.08).sphere(0, 0, 0, 0.06, 6, 4, 0.5, 0.5, 1.6);
+  g.c(0x8a98a4).tri([0, 0, -0.08], [0, 0.04, -0.14], [0, -0.04, -0.14]).tri([0, 0, -0.08], [0, -0.04, -0.14], [0, 0.04, -0.14]);
+  return g.build();
+}
+
 export function relicModel(): THREE.BufferGeometry {
   const g = new GeoBuilder(700);
   g.c(0xd4a93a, 0.08).box(0, 0, 0, 0.36, 0.22, 0.26);

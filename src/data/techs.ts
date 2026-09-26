@@ -14,7 +14,7 @@ const units = (...ids: string[]): Selector => ({ units: ids });
 add({
   id: 'feudalAge', name: 'Feudal Age', age: 0, building: 'townCenter', cost: { food: 500 }, time: 130, slot: 4, icon: 'age1',
   isAge: true, requiresBuildings: { count: 2, age: 1 }, effects: [{ kind: 'age', age: 1 }],
-  description: 'Advance to the Feudal Age. Requires two Dark Age buildings (Barracks, Mill, Lumber Camp or Mining Camp).',
+  description: 'Advance to the Feudal Age. Requires two Dark Age buildings (Barracks, Mill, Lumber Camp, Mining Camp or Dock).',
 });
 add({
   id: 'castleAge', name: 'Castle Age', age: 1, building: 'townCenter', cost: { food: 800, gold: 200 }, time: 160, slot: 4, icon: 'age2',
@@ -183,8 +183,8 @@ add({
 add({
   id: 'chemistry', name: 'Chemistry', age: 3, building: 'university', cost: { food: 300, gold: 200 }, time: 100, slot: 2, icon: 'chemistry',
   effects: [stat({ classes: ['archer', 'siege'], buildings: ['townCenter', 'watchTower', 'guardTower', 'keep', 'castle'] }, 'attack', 1),
-    { kind: 'enable', unit: 'handCannoneer' }, { kind: 'enable', unit: 'bombard' }],
-  description: 'Ranged units and buildings +1 attack. Enables Hand Cannoneers and Bombard Cannons.',
+    { kind: 'enable', unit: 'handCannoneer' }, { kind: 'enable', unit: 'bombard' }, { kind: 'enable', unit: 'cannonGalleon' }],
+  description: 'Ranged units and buildings +1 attack. Enables Hand Cannoneers, Bombard Cannons and Cannon Galleons.',
 });
 add({
   id: 'siegeEngineers', name: 'Siege Engineers', age: 3, building: 'university', cost: { food: 500, wood: 600 }, time: 45, slot: 3, icon: 'siegeEngineers',
@@ -215,8 +215,8 @@ add({
 });
 add({
   id: 'heatedShot', name: 'Heated Shot', age: 2, building: 'university', cost: { food: 350, gold: 100 }, time: 30, slot: 8, icon: 'heatedShot',
-  effects: [{ kind: 'bonus', target: { buildings: ['watchTower', 'guardTower', 'keep', 'castle', 'townCenter'] }, vs: 'siege', value: 4 }],
-  description: 'Towers and castles +4 attack against siege weapons.',
+  effects: [{ kind: 'bonus', target: { buildings: ['watchTower', 'guardTower', 'keep', 'castle', 'townCenter'] }, vs: 'ship', value: 7 }],
+  description: 'Towers and castles +7 attack against ships.',
 });
 
 /* ---------------------------- Monastery ---------------------------- */
@@ -267,7 +267,7 @@ const pendingNames: Record<string, string> = {
   militia: 'Militia', manAtArms: 'Men-at-Arms', longSwordsman: 'Long Swordsmen', twoHanded: 'Two-Handed Swordsmen',
   spearman: 'Spearmen', pikeman: 'Pikemen', archer: 'Archers', crossbowman: 'Crossbowmen', skirmisher: 'Skirmishers',
   cavArcher: 'Cavalry Archers', scout: 'Scout Cavalry', lightCav: 'Light Cavalry', knight: 'Knights', cavalier: 'Cavaliers',
-  camel: 'Camel Riders', ram: 'Battering Rams', cappedRam: 'Capped Rams', mangonel: 'Mangonels', onager: 'Onagers', scorpion: 'Scorpions',
+  camel: 'Camel Riders', galley: 'Galleys', warGalley: 'War Galleys', fireShip: 'Fire Ships', demolitionShip: 'Demolition Ships', ram: 'Battering Rams', cappedRam: 'Capped Rams', mangonel: 'Mangonels', onager: 'Onagers', scorpion: 'Scorpions',
 };
 function nameOf(id: string): string {
   return pendingNames[id] ?? id;
@@ -352,6 +352,28 @@ add({
   id: 'coinage', name: 'Coinage', age: 2, building: 'market', cost: { food: 200, gold: 100 }, time: 50, slot: 7, icon: 'coinage',
   effects: [{ kind: 'flag', flag: 'coinage' }], description: 'Trade Carts earn 20% more gold.',
 });
+
+/* ---------------------------- Dock ---------------------------------- */
+add({
+  id: 'gillnets', name: 'Gillnets', age: 2, building: 'dock', cost: { food: 150, wood: 200 }, time: 45, slot: 10, icon: 'gillnets',
+  effects: [{ kind: 'gather', gather: 'fish', mult: 1.25 }], description: 'Fishing ships gather 25% faster.',
+});
+add({
+  id: 'careening', name: 'Careening', age: 1, building: 'dock', cost: { food: 250, gold: 150 }, time: 60, slot: 11, icon: 'careening',
+  effects: [stat(cls('ship'), 'pierceArmor', 1), { kind: 'flag', flag: 'careening' }], description: 'Ships +1 pierce armor; transports carry 5 more units.',
+});
+add({
+  id: 'dryDock', name: 'Dry Dock', age: 2, building: 'dock', cost: { food: 600, gold: 400 }, time: 60, slot: 12, icon: 'dryDock',
+  requires: ['careening'], effects: [stat(cls('ship'), 'speed', 1.15, 'mul'), { kind: 'flag', flag: 'dryDock' }], description: 'Ships move 15% faster; transports carry 5 more units.',
+});
+add({
+  id: 'shipwright', name: 'Shipwright', age: 3, building: 'dock', cost: { food: 1000, gold: 300 }, time: 60, slot: 13, icon: 'shipwright',
+  effects: [{ kind: 'cost', target: cls('ship'), mult: 0.8, res: 'wood' }], description: 'Ships cost 20% less wood.',
+});
+up('warGalleyUp', 'War Galley', 'dock', 2, { food: 230, wood: 100 }, 50, 8, 'galley', 'warGalley');
+up('galleonUp', 'Galleon', 'dock', 3, { food: 400, wood: 315 }, 65, 8, 'warGalley', 'galleon', ['warGalleyUp']);
+up('fastFireShipUp', 'Fast Fire Ship', 'dock', 3, { wood: 280, gold: 250 }, 50, 9, 'fireShip', 'fastFireShip');
+up('heavyDemoUp', 'Heavy Demolition Ship', 'dock', 3, { food: 200, gold: 300 }, 50, 14, 'demolitionShip', 'heavyDemolitionShip');
 
 /* ---------------------------- Elite unique units -------------------- */
 function eliteUU(uuId: string, name: string, cost: TechDef['cost'], time: number, civ: string): void {

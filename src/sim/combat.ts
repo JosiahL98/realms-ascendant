@@ -65,6 +65,7 @@ const ARC: Record<ProjectileKind, number> = {
 };
 
 export function unitCenterY(game: Game, u: Unit): number {
+  if (u.def.naval) return game.map.waterLevel + 0.35;
   return game.map.surfaceAt(u.x, u.z) + (u.def.classes.includes('mounted') ? 0.75 : u.def.classes.includes('siege') ? 0.5 : 0.45);
 }
 

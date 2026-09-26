@@ -13,7 +13,7 @@ import { Input } from './input';
 import { Minimap } from './minimap';
 import { AudioSys } from '../audio/audio';
 
-export type TargetMode = 'attackMove' | 'patrol' | 'follow' | 'garrison' | 'repair' | 'attackGround' | 'rally' | 'heal' | 'convert';
+export type TargetMode = 'attackMove' | 'patrol' | 'follow' | 'garrison' | 'repair' | 'attackGround' | 'rally' | 'heal' | 'convert' | 'unloadAt';
 
 export interface AIController {
   update(): void;

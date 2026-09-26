@@ -20,6 +20,7 @@ export type Order =
   | { t: 'trade'; target: number }
   | { t: 'relic'; target: number }
   | { t: 'flee'; x: number; z: number; until: number }
+  | { t: 'unload'; x: number; z: number }
   | { t: 'unpack' };
 
 export type AnimName = 'idle' | 'walk' | 'attack' | 'work' | 'die' | 'pack' | 'unpack' | 'carry';
@@ -86,6 +87,8 @@ export class Unit {
   prevOrder: Order | null = null;
   returning = false;
   dropId = 0;
+  /** Drop-off that could not be reached on the current trip. */
+  badDropId = 0;
   farmSpotX = 0;
   farmSpotZ = 0;
   farmMoveAt = 0;
@@ -205,7 +208,7 @@ export class Building {
   }
 }
 
-export type ResourceType = 'tree' | 'gold' | 'stone' | 'berries' | 'carcass' | 'relic';
+export type ResourceType = 'tree' | 'gold' | 'stone' | 'berries' | 'carcass' | 'relic' | 'fish';
 
 export class ResourceNode {
   readonly kind = 'resource' as const;

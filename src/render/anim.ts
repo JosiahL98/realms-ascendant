@@ -304,6 +304,27 @@ export function animate(rig: Rig, s: AnimState, out: Float32Array): void {
       humanUpper(rig, { ...s }, out, 'r', false);
       return;
     }
+    case 'ship': {
+      const bob = Math.sin((s.time + s.seed) * 1.3) * 0.02;
+      if (s.anim === 'die') {
+        const e = ease(s.t / 2.5);
+        T(out, b.root, 0, -0.9 * e + bob, 0);
+        R(out, b.root, 0.25 * e, 0, 0.5 * e);
+        return;
+      }
+      T(out, b.hull, 0, bob, 0);
+      R(out, b.hull, Math.sin((s.time + s.seed) * 0.8) * 0.025, 0, Math.sin((s.time + s.seed) * 1.1) * 0.035);
+      if (walking) {
+        const ph = (s.time + s.seed) * 3.2;
+        R(out, b.oarsL, Math.sin(ph) * 0.45, 0, 0);
+        R(out, b.oarsR, Math.sin(ph) * 0.45, 0, 0);
+        const sc = 1 + Math.sin(s.time * 2) * 0.03;
+        const o = b.sail * BONE_STRIDE;
+        out[o + 6] = sc;
+      }
+      if (s.anim === 'work') R(out, b.net, 0.6 + Math.sin(s.time * 1.5) * 0.2);
+      return;
+    }
     case 'ram':
     case 'mangonel':
     case 'scorpion':

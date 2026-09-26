@@ -29,10 +29,14 @@ export class GameMap {
   obstacle: Int32Array;
   /** 1 = blocked for land units. */
   landBlocked: Uint8Array;
+  /** 1 = blocked for ships (not water, or an obstacle such as a dock). */
+  navalBlocked: Uint8Array;
   /** Gate tiles: owner player id (passable for owner & allies), -1 otherwise. */
   gateOwner: Int8Array;
   /** Walkable building (farm) id on tile, 0 if none. */
   farmAt: Int32Array;
+  /** Connected water region id per tile (0 = land). */
+  waterBody: Int32Array;
   readonly waterLevel = -0.18;
   /** Incremented every time passability changes (for path cache invalidation). */
   version = 0;
@@ -43,8 +47,62 @@ export class GameMap {
     this.heights = new Float32Array((n + 1) * (n + 1));
     this.obstacle = new Int32Array(n * n);
     this.landBlocked = new Uint8Array(n * n);
+    this.navalBlocked = new Uint8Array(n * n);
     this.gateOwner = new Int8Array(n * n).fill(-1);
     this.farmAt = new Int32Array(n * n);
+    this.waterBody = new Int32Array(n * n);
+  }
+
+  /** Label connected bodies of water (8-connected) so ships only chase reachable targets. */
+  labelWaterBodies(): void {
+    const n = this.n;
+    this.waterBody.fill(0);
+    let id = 0;
+    const stack: number[] = [];
+    for (let i = 0; i < n * n; i++) {
+      if (this.waterBody[i] || !isWaterTerrain(this.terrain[i])) continue;
+      id++;
+      this.waterBody[i] = id;
+      stack.push(i);
+      while (stack.length) {
+        const k = stack.pop()!;
+        const x = k % n, z = (k / n) | 0;
+        for (let dz = -1; dz <= 1; dz++)
+          for (let dx = -1; dx <= 1; dx++) {
+            const xx = x + dx, zz = z + dz;
+            if (xx < 0 || zz < 0 || xx >= n || zz >= n) continue;
+            const j = zz * n + xx;
+            if (this.waterBody[j] || !isWaterTerrain(this.terrain[j])) continue;
+            this.waterBody[j] = id;
+            stack.push(j);
+          }
+      }
+    }
+  }
+
+  /** Water body a floating unit at (x,z) is in (searches a small neighbourhood). */
+  bodyAt(x: number, z: number): number {
+    const tx = Math.floor(x), tz = Math.floor(z);
+    for (let r = 0; r <= 2; r++)
+      for (let dz = -r; dz <= r; dz++)
+        for (let dx = -r; dx <= r; dx++) {
+          if (!this.inBounds(tx + dx, tz + dz)) continue;
+          const b = this.waterBody[this.idx(tx + dx, tz + dz)];
+          if (b) return b;
+        }
+    return 0;
+  }
+
+  /** True if a blocking tile has at least one walkable neighbour (so workers can reach it). */
+  hasOpenNeighbor(x: number, z: number): boolean {
+    for (let dz = -1; dz <= 1; dz++)
+      for (let dx = -1; dx <= 1; dx++) {
+        if (!dx && !dz) continue;
+        const xx = x + dx, zz = z + dz;
+        if (!this.inBounds(xx, zz)) continue;
+        if (!this.landBlocked[this.idx(xx, zz)]) return true;
+      }
+    return false;
   }
 
   idx(x: number, z: number): number {
@@ -90,6 +148,7 @@ export class GameMap {
     const t = this.terrain[i];
     const blocked = isWaterTerrain(t) || this.obstacle[i] !== 0;
     this.landBlocked[i] = blocked ? 1 : 0;
+    this.navalBlocked[i] = !isWaterTerrain(t) || this.obstacle[i] !== 0 ? 1 : 0;
   }
 
   refreshAll(): void {

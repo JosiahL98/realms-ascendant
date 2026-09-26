@@ -94,8 +94,8 @@ export class AIPlayer {
     }
     this.myUnits = g.units.filter((u) => u.alive && u.owner === this.pid);
     this.myBuildings = g.buildings.filter((b) => b.alive && b.owner === this.pid);
-    this.vills = this.myUnits.filter((u) => u.def.gatherer && !u.garrisonedIn);
-    this.army = this.myUnits.filter((u) => !u.garrisonedIn && isMilitary(u) && !u.def.animal);
+    this.vills = this.myUnits.filter((u) => u.def.builder && !u.garrisonedIn);
+    this.army = this.myUnits.filter((u) => !u.garrisonedIn && isMilitary(u) && !u.def.animal && !u.def.naval);
     const tc = this.myBuildings.find((b) => b.type === 'townCenter' && b.built);
     if (tc) {
       this.baseX = tc.x;
@@ -113,6 +113,7 @@ export class AIPlayer {
     this.research();
     this.trainMilitary();
     this.monks();
+    this.naval();
     this.scout();
     this.attack();
     this.marketTrade();
@@ -182,12 +183,26 @@ export class AIPlayer {
               }
             }
         }
+        if (ok && !this.reachableFromBase(type, tx, tz)) ok = false;
         if (ok) best.push({ tx, tz, d: r });
+        if (best.length >= 3) break;
       }
       if (best.length) break;
     }
     if (!best.length) return null;
     return best[Math.floor(this.rng.next() * Math.min(3, best.length))];
+  }
+
+  /** Can villagers walk from the Town Center to this footprint? */
+  private reachableFromBase(type: string, tx: number, tz: number): boolean {
+    const g = this.game;
+    const def = BUILDINGS[type];
+    const w = def.size[0], h = def.size[1];
+    const pf = g.pathfinder.setDomain(false);
+    const start = pf.nearestPassable(this.baseX, this.baseZ + 3, g.teamOf[this.pid], 6);
+    if (!start) return true;
+    const res = pf.findPath(start.x, start.z, { x0: tx, z0: tz, x1: tx + w, z1: tz + h, range: 0.5 }, g.teamOf[this.pid], 12000);
+    return res.reached;
   }
 
   private place(type: string, spot: { tx: number; tz: number } | null, builders: number): boolean {
@@ -303,6 +318,16 @@ export class AIPlayer {
       ratio.food -= 0.03;
       ratio.wood -= 0.03;
     }
+    // adapt to stockpiles: move workers away from hoarded resources toward scarce ones
+    let sum = 0;
+    for (const k of ['food', 'wood', 'gold', 'stone'] as const) {
+      if (ratio[k] <= 0) continue;
+      const stock = this.p.res[k];
+      const f = Math.max(0.35, Math.min(1.7, 1.45 - stock / (k === 'stone' ? 900 : 1400)));
+      ratio[k] *= f;
+      sum += ratio[k];
+    }
+    if (sum > 0) for (const k of ['food', 'wood', 'gold', 'stone'] as const) ratio[k] /= sum;
     const want = (k: keyof Ratio) => Math.round(total * ratio[k]);
     const deficit = (k: keyof Ratio) => want(k) - counts[k];
     const order: (keyof Ratio)[] = ['food', 'wood', 'gold', 'stone'];
@@ -402,6 +427,14 @@ export class AIPlayer {
       if (this.p.res.wood >= 60 && buildingAvailable(g, this.p, 'farm').ok) {
         const spot = this.farmSpot();
         if (spot) return this.cmd({ c: 'build', units: [u.id], building: 'farm', tx: spot.tx, tz: spot.tz });
+        // no room left around existing mills: open new farmland with another mill
+        if (!this.placedRecently('mill', 60) && this.p.res.wood >= 160 && this.count('mill') < 4) {
+          const ms = this.findSpot('mill', this.baseX, this.baseZ, 10, 24, 4);
+          if (ms && this.cmd({ c: 'build', units: [u.id], building: 'mill', tx: ms.tx, tz: ms.tz })) {
+            this.lastPlace.set('mill', g.time);
+            return true;
+          }
+        }
       }
       if (!this.count('mill') && this.p.canAfford(this.p.buildingCost('mill')) && !this.placedRecently('mill', 25)) {
         const spot = this.findSpot('mill', bx, bz, 5, 10, 1);
@@ -439,7 +472,7 @@ export class AIPlayer {
         }
       }
       if (bestTree) return this.cmd({ c: 'gather', units: [u.id], target: bestTree.id });
-      const any = g.findResource('wood', bx, bz, 30);
+      const any = g.findResource('wood', u.x, u.z, 45) ?? g.findResource('wood', bx, bz, 60);
       return any ? this.cmd({ c: 'gather', units: [u.id], target: any.id }) : false;
     }
     // gold / stone
@@ -474,7 +507,7 @@ export class AIPlayer {
     for (const r of g.resources) {
       if (!r.alive || r.type !== 'tree') continue;
       const d = Math.hypot(r.x - this.baseX, r.z - this.baseZ);
-      if (d > 30 || d < 5) continue;
+      if (d > 48 || d < 5) continue;
       if (this.rng.next() < 0.6) continue;
       // density
       let dens = 0;
@@ -674,7 +707,7 @@ export class AIPlayer {
     const maxMil = Math.round((p.age + 1) * 12 * this.cfg.armyMul) + 6;
     if (this.army.length >= maxMil || p.pop >= p.popCap) return;
     for (const b of this.myBuildings) {
-      if (!b.built || !b.def.trains || b.type === 'townCenter' || b.type === 'market' || b.type === 'monastery') continue;
+      if (!b.built || !b.def.trains || b.type === 'townCenter' || b.type === 'market' || b.type === 'monastery' || b.type === 'dock') continue;
       if (b.queue.length >= 2) continue;
       const options = (b.def.trains).map((l) => (l === 'uniqueUnit' ? p.civ.uniqueUnit : l)).filter((l) => lines.includes(l) && unitAvailable(g, p, p.currentOf(l)).ok);
       if (!options.length) {
@@ -896,6 +929,49 @@ export class AIPlayer {
       }
     }
     return best;
+  }
+
+  /** Docks, fishing boats and a small war fleet when the enemy takes to the water. */
+  private naval(): void {
+    const g = this.game;
+    const p = this.p;
+    if (this.n % 4 !== 0) return;
+    const fish = this.nearestRes('fish', this.baseX, this.baseZ, 30);
+    const docks = this.myBuildings.filter((b) => b.type === 'dock');
+    if (!docks.length) {
+      if (!fish || this.vills.length < 11 || this.placedRecently('dock', 45)) return;
+      if (!this.affordWithReserve(p.buildingCost('dock'), this.reserve())) return;
+      const spot = this.findSpot('dock', fish.x, fish.z, 1, 9, 0);
+      this.place('dock', spot, 2);
+      return;
+    }
+    const dock = docks.find((d) => d.built);
+    if (!dock) return;
+    const boats = this.myUnits.filter((u) => u.def.fisher && !u.garrisonedIn);
+    const dockBody = g.map.bodyAt(dock.x, dock.z);
+    const fishLeft = g.resources.filter((r) => r.alive && r.gather === 'fish' && g.map.waterBody[g.map.idx(r.tx, r.tz)] === dockBody && Math.hypot(r.x - dock.x, r.z - dock.z) < 40).length;
+    const want = Math.min(fishLeft * 2, p.age === 0 ? 4 : p.age === 1 ? 7 : 10);
+    if (boats.length < want && dock.queue.length < 2 && p.pop < p.popCap && this.affordWithReserve(p.unitCost('fishingShip'), this.reserve())) {
+      this.cmd({ c: 'train', building: dock.id, unit: 'fishingShip' });
+    }
+    for (const b of boats) {
+      if (b.order.t !== 'idle') continue;
+      const f = g.findResource('fish', b.x, b.z, 45, 0, g.map.bodyAt(b.x, b.z));
+      if (f) this.cmd({ c: 'gather', units: [b.id], target: f.id });
+      else this.cmd({ c: 'delete', ids: [b.id] });
+    }
+    // war fleet in response to enemy ships
+    const enemyShips = g.units.filter((u) => u.alive && u.def.naval && g.isEnemy(this.pid, u.owner) && !u.def.fisher);
+    const fleet = this.myUnits.filter((u) => u.def.naval && isMilitary(u) && !u.garrisonedIn);
+    if (p.age >= 1 && fleet.length < Math.min(10, enemyShips.length + 2) && enemyShips.length > 0 && dock.queue.length < 2) {
+      const unit = p.currentOf('galley');
+      if (unitAvailable(g, p, unit).ok && this.affordWithReserve(p.unitCost(unit), this.reserve())) this.cmd({ c: 'train', building: dock.id, unit: 'galley' });
+    }
+    const idleFleet = fleet.filter((u) => u.order.t === 'idle');
+    if (idleFleet.length && enemyShips.length) {
+      const t = enemyShips.sort((a, b) => Math.hypot(a.x - dock.x, a.z - dock.z) - Math.hypot(b.x - dock.x, b.z - dock.z))[0];
+      this.cmd({ c: 'move', units: idleFleet.map((u) => u.id), x: t.x, z: t.z, attackMove: true });
+    }
   }
 
   private marketTrade(): void {

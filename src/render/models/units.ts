@@ -5,7 +5,7 @@ import { DETAIL as D } from '../textures';
 
 type V3 = [number, number, number];
 
-export type AnimStyle = 'human' | 'rider' | 'quad' | 'elephant' | 'ram' | 'mangonel' | 'scorpion' | 'trebuchet' | 'cart' | 'bombard';
+export type AnimStyle = 'human' | 'rider' | 'quad' | 'elephant' | 'ram' | 'mangonel' | 'scorpion' | 'trebuchet' | 'cart' | 'bombard' | 'ship';
 
 export interface Bone {
   name: string;
@@ -436,7 +436,7 @@ interface MountOpts {
 function mount(rb: RigBuilder, o: MountOpts): void {
   rb.bone('root', null, [0, 0, 0]);
   const camel = o.kind === 'camel';
-  const bodyY = camel ? 0.82 : 0.62;
+  const bodyY = camel ? 0.76 : 0.62;
   rb.bone('body', 'root', [0, bodyY, 0]);
   rb.bone('neck', 'body', camel ? [0, 0.06, 0.42] : [0, 0.12, 0.42]);
   const legY = -0.1;
@@ -451,7 +451,7 @@ function mount(rb: RigBuilder, o: MountOpts): void {
   b.c(coat, 0.05).sphere(0, 0, 0, 0.21, 10, 7, 1.0, 1.08, 2.35);
   b.sphere(0, 0.02, 0.3, 0.2, 8, 6, 0.95, 1.05, 1.05);
   b.sphere(0, 0.03, -0.3, 0.21, 8, 6, 1, 1, 1.05);
-  if (camel) b.c(coat, 0.06).sphere(0, 0.22, -0.04, 0.16, 8, 6, 1, 1.1, 1.3);
+  if (camel) b.c(coat, 0.06).sphere(0, 0.22, -0.04, 0.2, 8, 6, 1, 1.15, 1.35);
   const pcB = rb.g('body', true);
   switch (o.barding ?? 'cloth') {
     case 'cloth':
@@ -491,11 +491,12 @@ function mount(rb: RigBuilder, o: MountOpts): void {
     if (o.barding === 'plate' || o.barding === 'gold') n.c(o.barding === 'gold' ? 0xd4a93a : 0xb8bcc4).push().translate(0, 0.29, 0.2).rotateX(1.3).cyl(0, 0.08, 0, 0.076, 0.055, 0.15, 7).pop();
     if (o.barding === 'plate' || o.barding === 'gold') rb.g('neck', true).c(0xffffff, 0.04).mt(D.cloth).push().rotateX(0.6).cyl(0, 0, 0, 0.115, 0.09, 0.28, 8).pop();
   }
-  const legLen = camel ? 0.72 : 0.52;
+  const legLen = camel ? 0.66 : 0.52;
   for (const lg of ['legFL', 'legFR', 'legBL', 'legBR']) {
     const g = rb.g(lg);
-    g.c(coat, 0.05).cyl(0, -legLen * 0.5, 0, 0.042, 0.065, legLen * 0.5, 6);
-    g.cyl(0, -legLen, 0, 0.03, 0.04, legLen * 0.5, 6);
+    const lw = camel ? 1.15 : 1;
+    g.c(coat, 0.05).cyl(0, -legLen * 0.5, 0, 0.042 * lw, 0.066 * lw, legLen * 0.5, 6);
+    g.cyl(0, -legLen, 0, 0.03 * lw, 0.042 * lw, legLen * 0.5, 6);
     g.c(camel ? 0x8a7050 : 0x1e1612).box(0, -legLen, 0.01, 0.06, 0.045, 0.07);
   }
   rb.g('tail').c(camel ? coat : 0x2a1c14, 0.05).push().rotateX(2.6).cyl(0, 0, 0, 0.035, 0.015, 0.32, 5).pop();
@@ -516,7 +517,7 @@ function riderRig(id: string, m: MountOpts, o: HumanOpts): Rig {
   mount(rb, m);
   human(rb, o, 'r', 'body', true);
   // position rider hips on the saddle
-  rb.bones[rb.b['rhips']].pivot = [0, m.kind === 'camel' ? 0.4 : 0.28, -0.04];
+  rb.bones[rb.b['rhips']].pivot = [0, m.kind === 'camel' ? 0.42 : 0.28, -0.04];
   const rig = rb.build(id, 'rider', o.weapon, m.kind === 'camel' ? 1.7 : 1.45, true);
   rig.quadKind = m.kind;
   return rig;
@@ -812,6 +813,153 @@ function monkRig(id: string): Rig {
   return rb.build(id, 'human', 'staff', 0.86);
 }
 
+/* ========================================================================================== */
+/* Ships                                                                                       */
+/* ========================================================================================== */
+
+/** Boat hull along z (bow at +z) with its waterline at y=0. */
+function hull(g: GeoBuilder, len: number, wid: number, top: number, color: number, deckColor = 0x9a7a4a, round = 0.5): void {
+  const N = 9;
+  const secs: [number, number, number][] = [];
+  for (let i = 0; i <= N; i++) {
+    const t = i / N;
+    const z = -len / 2 + t * len;
+    const u = t * 2 - 1;
+    const w = wid * Math.pow(Math.max(0, 1 - Math.pow(Math.abs(u), 2.2)), round) + 0.01;
+    const lift = Math.pow(Math.abs(u), 3) * 0.12;
+    secs.push([z, w, top + lift]);
+  }
+  const ring = (s: [number, number, number]): [number, number, number][] => {
+    const [z, w, t] = s;
+    return [[-w, t, z], [-w * 0.75, t * 0.3, z], [0, -0.12, z], [w * 0.75, t * 0.3, z], [w, t, z]];
+  };
+  g.c(color, 0.05).mt(D.planks);
+  for (let i = 0; i < N; i++) {
+    const a = ring(secs[i]), b = ring(secs[i + 1]);
+    for (let k = 0; k < 4; k++) g.quad(a[k], b[k], b[k + 1], a[k + 1]);
+  }
+  g.c(deckColor, 0.05);
+  for (let i = 0; i < N; i++) {
+    const a = ring(secs[i]), b = ring(secs[i + 1]);
+    g.quad(a[4], b[4], b[0], a[0]);
+  }
+  g.mt(0);
+  // gunwale trim
+  g.c(0x4a3018, 0.05);
+  for (let i = 0; i < N; i++) {
+    const a = secs[i], b = secs[i + 1];
+    for (const sgn of [-1, 1]) g.quad([sgn * a[1], a[2], a[0]], [sgn * b[1], b[2], b[0]], [sgn * b[1], b[2] + 0.03, b[0]], [sgn * a[1], a[2] + 0.03, a[0]]);
+  }
+}
+
+interface ShipOpts {
+  len: number;
+  wid: number;
+  hullCol: number;
+  mast?: number;
+  sail?: 'square' | 'lateen' | 'none';
+  masts?: number;
+  oars?: number;
+  shields?: boolean;
+  castle?: boolean;
+  cannons?: boolean;
+  cargo?: boolean;
+  fire?: boolean;
+  kegs?: boolean;
+  net?: boolean;
+  crew?: number;
+  ram?: boolean;
+}
+
+function shipRig(id: string, o: ShipOpts): Rig {
+  const rb = new RigBuilder();
+  rb.bone('root', null, [0, 0, 0]);
+  rb.bone('hull', 'root', [0, 0, 0]);
+  rb.bone('sail', 'hull', [0, 0.3, 0.05]);
+  rb.bone('oarsL', 'hull', [o.wid * 0.9, 0.2, 0]);
+  rb.bone('oarsR', 'hull', [-o.wid * 0.9, 0.2, 0]);
+  rb.bone('net', 'hull', [0, 0.25, -o.len * 0.42]);
+  const h = rb.g('hull');
+  const top = 0.24;
+  hull(h, o.len, o.wid, top, o.hullCol);
+  if (o.ram) h.c(0x9a7a3a).push().translate(0, 0.02, o.len / 2 + 0.05).rotateX(Math.PI / 2).cone(0, 0, 0, 0.06, 0.25, 5).pop();
+  if (o.castle) {
+    h.c(o.hullCol, 0.05).mt(D.planks).box(0, top, -o.len * 0.36, o.wid * 1.6, 0.26, o.len * 0.22);
+    h.box(0, top, o.len * 0.36, o.wid * 1.4, 0.18, o.len * 0.16);
+    h.mt(0);
+    h.c(0x4a3018).box(0, top + 0.26, -o.len * 0.36, o.wid * 1.7, 0.04, o.len * 0.23);
+  }
+  const masts = o.masts ?? (o.sail === 'none' ? 0 : 1);
+  const mh = o.mast ?? 1.0;
+  for (let m = 0; m < masts; m++) {
+    const mz = masts === 1 ? 0.05 : (m === 0 ? o.len * 0.18 : -o.len * 0.18);
+    h.c(0x5a3a1a, 0.04).cyl(0, top, mz, 0.03, 0.022, mh, 6);
+    h.c(0x5a3a1a).box(0, top + mh * 0.85, mz, o.wid * 2.2, 0.03, 0.03);
+    const sp = rb.g('sail', true);
+    sp.mt(D.cloth);
+    if (o.sail === 'lateen') {
+      sp.c(0xffffff, 0.04).tri([0, top + mh * 0.95 - 0.3, mz + 0.35], [0, top + 0.15 - 0.3, mz + 0.3], [0, top + 0.15 - 0.3, mz - 0.35]);
+      sp.tri([0, top + mh * 0.95 - 0.3, mz + 0.35], [0, top + 0.15 - 0.3, mz - 0.35], [0, top + 0.15 - 0.3, mz + 0.3]);
+    } else if (o.sail !== 'none') {
+      const sw = o.wid * 2.0, sh = mh * 0.62;
+      sp.c(0xffffff, 0.04).box(0, top + mh * 0.25 - 0.3, mz + 0.03, sw, sh, 0.03);
+      sp.c(0xdddddd, 0.04).box(0, top + mh * 0.25 - 0.3 + sh * 0.45, mz + 0.05, sw, sh * 0.12, 0.01);
+    }
+    sp.mt(0);
+    h.c(0xd4a93a).sphere(0, top + mh + 0.02, mz, 0.035, 5, 3);
+  }
+  if (masts) rb.g('hull', true).c(0xffffff).box(0.05, top + mh + 0.1, -0.02, 0.14, 0.08, 0.01);
+  if (o.oars) {
+    for (const side of ['oarsL', 'oarsR']) {
+      const g = rb.g(side);
+      const s = side === 'oarsL' ? 1 : -1;
+      for (let i = 0; i < o.oars; i++) {
+        const z = -o.len * 0.3 + (i / Math.max(1, o.oars - 1)) * o.len * 0.6;
+        g.c(0x7a5a38).push().translate(0, 0, z).rotateZ(s * 1.1).cyl(0, 0, 0, 0.012, 0.012, 0.42, 4).pop();
+      }
+    }
+  }
+  if (o.shields) {
+    const pc = rb.g('hull', true);
+    const n = Math.round(o.len * 3.5);
+    for (let i = 0; i < n; i++) {
+      const z = -o.len * 0.36 + (i / (n - 1)) * o.len * 0.72;
+      for (const s of [1, -1]) pc.c(i % 2 ? 0xffffff : 0xcccccc).push().translate(s * (o.wid * 0.98), top + 0.05, z).rotateZ(s * Math.PI / 2).cyl(0, 0, 0, 0.07, 0.07, 0.02, 8).pop();
+    }
+  }
+  if (o.cannons) {
+    const n = 3;
+    for (let i = 0; i < n; i++) for (const s of [1, -1]) h.c(0x2a2a2a).push().translate(s * o.wid * 0.95, top - 0.02, -0.3 + i * 0.3).rotateZ(-s * Math.PI / 2).cyl(0, 0, 0, 0.035, 0.03, 0.18, 6).pop();
+  }
+  if (o.cargo) {
+    h.c(0x7a5230, 0.06).mt(D.planks).box(0.08, top, -0.2, 0.18, 0.16, 0.18).box(-0.1, top, 0.15, 0.18, 0.14, 0.2);
+    h.mt(0);
+    h.c(0xb86a3a).sphere(-0.08, top + 0.08, -0.25, 0.06, 6, 4, 1, 1.3, 1);
+  }
+  if (o.fire) {
+    h.c(0x5a5a5a).cyl(0, top, o.len * 0.38, 0.07, 0.09, 0.12, 7);
+    h.c(0xff7a1a).sphere(0, top + 0.16, o.len * 0.38, 0.07, 6, 4);
+    h.c(0x3a3a3a).push().translate(0, top + 0.1, o.len * 0.4).rotateX(1.2).cyl(0, 0, 0, 0.025, 0.02, 0.3, 5).pop();
+  }
+  if (o.kegs) {
+    for (let i = 0; i < 4; i++) h.c(0x6a4a2a, 0.06).cyl(-0.08 + (i % 2) * 0.16, top, -0.15 + Math.floor(i / 2) * 0.22, 0.07, 0.07, 0.15, 7);
+    h.c(0x2a2a2a).sphere(0, top + 0.2, 0, 0.05, 5, 4);
+  }
+  if (o.net) {
+    rb.g('net').c(0xb0a890, 0.1).push().rotateX(0.6).box(0, -0.2, 0, 0.3, 0.4, 0.01).pop();
+    rb.g('net').c(0x5a3a1a).cyl(0, 0, 0, 0.012, 0.012, 0.3, 4);
+  }
+  // crew figures
+  const crew = o.crew ?? 1;
+  for (let i = 0; i < crew; i++) {
+    const z = (i - (crew - 1) / 2) * (o.len * 0.5 / Math.max(1, crew));
+    const x = crew > 1 ? (i % 2 ? 0.08 : -0.08) : 0;
+    rb.g('hull', true).c(0xffffff).cyl(x, top, z, 0.045, 0.055, 0.2, 6);
+    rb.g('hull').c(SKINS[1]).sphere(x, top + 0.26, z, 0.045, 6, 4);
+  }
+  return rb.build(id, 'ship', 'none', 0.9 + mh * 0.5);
+}
+
 const RIGS = new Map<string, Rig>();
 const DEFS: Record<string, () => Rig> = {
   villager: () => villagerRig('villager', false),
@@ -872,6 +1020,17 @@ const DEFS: Record<string, () => Rig> = {
   bombard: () => bombardRig('bombard'),
   trebuchet: () => trebuchetRig('trebuchet'),
   tradeCart: () => cartRig('tradeCart'),
+  fishingShip: () => shipRig('fishingShip', { len: 1.0, wid: 0.26, hullCol: 0x8a6a42, mast: 0.8, sail: 'lateen', net: true, crew: 1 }),
+  transportShip: () => shipRig('transportShip', { len: 1.45, wid: 0.4, hullCol: 0x7a5a38, mast: 1.0, sail: 'square', cargo: true, crew: 1 }),
+  tradeCog: () => shipRig('tradeCog', { len: 1.3, wid: 0.44, hullCol: 0x8a6a42, mast: 1.1, sail: 'square', castle: true, cargo: true, crew: 1 }),
+  galley: () => shipRig('galley', { len: 1.8, wid: 0.3, hullCol: 0x6a4a2a, mast: 1.0, sail: 'square', oars: 6, ram: true, crew: 3 }),
+  warGalley: () => shipRig('warGalley', { len: 1.95, wid: 0.32, hullCol: 0x5a3e24, mast: 1.1, sail: 'square', oars: 7, ram: true, shields: true, crew: 3 }),
+  galleon: () => shipRig('galleon', { len: 2.1, wid: 0.42, hullCol: 0x5a3e24, mast: 1.3, sail: 'square', masts: 2, castle: true, shields: true, crew: 3 }),
+  fireShip: () => shipRig('fireShip', { len: 1.6, wid: 0.3, hullCol: 0x5a3a24, mast: 0.9, sail: 'square', oars: 5, fire: true, crew: 2 }),
+  fastFireShip: () => shipRig('fastFireShip', { len: 1.7, wid: 0.3, hullCol: 0x4a3020, mast: 1.0, sail: 'square', oars: 6, fire: true, ram: true, crew: 2 }),
+  demolitionShip: () => shipRig('demolitionShip', { len: 1.1, wid: 0.28, hullCol: 0x6a5a4a, sail: 'none', oars: 3, kegs: true, crew: 1 }),
+  heavyDemolitionShip: () => shipRig('heavyDemolitionShip', { len: 1.25, wid: 0.3, hullCol: 0x5a4a3a, sail: 'none', oars: 4, kegs: true, crew: 1 }),
+  cannonGalleon: () => shipRig('cannonGalleon', { len: 2.2, wid: 0.45, hullCol: 0x4a3220, mast: 1.3, sail: 'square', masts: 2, castle: true, cannons: true, crew: 2 }),
 };
 
 export function getRig(model: string): Rig {

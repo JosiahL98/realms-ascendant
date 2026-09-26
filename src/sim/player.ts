@@ -309,7 +309,7 @@ export class Player {
     if (!def) return false;
     if (this.isDisabled(unitId) || (def.lineOf && this.isDisabled(def.lineOf))) return false;
     if (def.civ && def.civ !== this.civ.id) return false;
-    if ((unitId === 'handCannoneer' || unitId === 'bombard') && !this.enabled.has(unitId)) return false;
+    if ((unitId === 'handCannoneer' || unitId === 'bombard' || unitId === 'cannonGalleon') && !this.enabled.has(unitId)) return false;
     return true;
   }
 

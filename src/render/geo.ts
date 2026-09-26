@@ -260,27 +260,34 @@ export class GeoBuilder {
     return this;
   }
 
-  /** Curved pagoda-style roof with upturned eaves. */
+  /** Curved pagoda-style roof with eaves that sweep up at the corners. */
   pagoda(x: number, y: number, z: number, w: number, h: number, d: number, over = 0.35, lift = 0.18): this {
-    const segs = 3;
-    const x0 = x - w / 2 - over, x1 = x + w / 2 + over, z0 = z - d / 2 - over, z1 = z + d / 2 + over;
-    const cx0 = x - w * 0.12, cx1 = x + w * 0.12, cz0 = z - d * 0.12, cz1 = z + d * 0.12;
-    const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-    // concave profile: height as a function of t (0=eave, 1=ridge)
-    const prof = (t: number) => y + h * Math.pow(t, 1.6) + lift * (1 - t) * (1 - t) * 0.0;
-    for (let s = 0; s < segs; s++) {
-      const t0 = s / segs, t1 = (s + 1) / segs;
-      const y0 = prof(t0) + (s === 0 ? lift : 0), y1 = prof(t1);
-      const r0 = [lerp(x0, cx0, t0), lerp(x1, cx1, t0), lerp(z0, cz0, t0), lerp(z1, cz1, t0)];
-      const r1 = [lerp(x0, cx0, t1), lerp(x1, cx1, t1), lerp(z0, cz0, t1), lerp(z1, cz1, t1)];
-      this.quad([r0[0], y0, r0[3]], [r0[1], y0, r0[3]], [r1[1], y1, r1[3]], [r1[0], y1, r1[3]]);
-      this.quad([r0[1], y0, r0[2]], [r0[0], y0, r0[2]], [r1[0], y1, r1[2]], [r1[1], y1, r1[2]]);
-      this.quad([r0[1], y0, r0[3]], [r0[1], y0, r0[2]], [r1[1], y1, r1[2]], [r1[1], y1, r1[3]]);
-      this.quad([r0[0], y0, r0[2]], [r0[0], y0, r0[3]], [r1[0], y1, r1[3]], [r1[0], y1, r1[2]]);
-    }
-    const yt = prof(1);
-    this.quad([cx0, yt, cz0], [cx0, yt, cz1], [cx1, yt, cz1], [cx1, yt, cz0]);
-    this.quad([x0, y + lift, z0], [x1, y + lift, z0], [x1, y + lift, z1], [x0, y + lift, z1]);
+    const rows = 4, cols = 6;
+    const hw = w / 2 + over, hd = d / 2 + over;
+    const tw = w * 0.12, td = d * 0.12;
+    // point on the roof surface: u in [0,1] around one edge, v in [0,1] from eave to ridge
+    const pt = (side: number, u: number, v: number): [number, number, number] => {
+      const ew = hw + (tw - hw) * v, ed = hd + (td - hd) * v;
+      const a = -1 + 2 * u;
+      let px: number, pz: number;
+      if (side === 0) { px = a * ew; pz = ed; }
+      else if (side === 1) { px = ew; pz = -a * ed; }
+      else if (side === 2) { px = -a * ew; pz = -ed; }
+      else { px = -ew; pz = a * ed; }
+      const corner = Math.pow(Math.abs(a), 3) * (1 - v) * (1 - v);
+      const py = y + h * Math.pow(v, 1.7) + lift * corner;
+      return [x + px, py, z + pz];
+    };
+    for (let side = 0; side < 4; side++)
+      for (let r = 0; r < rows; r++)
+        for (let c = 0; c < cols; c++) {
+          const u0 = c / cols, u1 = (c + 1) / cols, v0 = r / rows, v1 = (r + 1) / rows;
+          this.quad(pt(side, u0, v0), pt(side, u1, v0), pt(side, u1, v1), pt(side, u0, v1));
+        }
+    const yt = y + h;
+    this.quad([x - tw, yt, z - td], [x - tw, yt, z + td], [x + tw, yt, z + td], [x + tw, yt, z - td]);
+    // underside
+    this.quad([x - hw, y, z - hd], [x + hw, y, z - hd], [x + hw, y, z + hd], [x - hw, y, z + hd]);
     return this;
   }
 

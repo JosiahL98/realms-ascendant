@@ -352,6 +352,82 @@ uu({
 }, { name: 'Elite Fire Lancer', hp: 70, attack: 14, meleeArmor: 2, pierceArmor: 2, model: 'eliteFireLancer' });
 
 /* ------------------------------------------------------------------ */
+/* Dock                                                                 */
+/* ------------------------------------------------------------------ */
+const ship = ['ship', 'naval'];
+add(u({
+  id: 'fishingShip', name: 'Fishing Ship', classes: ship, age: 0, trainedAt: 'dock', slot: 0,
+  cost: { wood: 75 }, trainTime: 40, pop: 1, hp: 60, speed: 1.26, los: 5, attack: 0, attackType: 'melee',
+  range: 0, reload: 2, meleeArmor: 0, pierceArmor: 4, radius: 0.45, model: 'fishingShip', naval: true, gatherer: true, fisher: true, noGarrison: true,
+  description: 'Gathers fish from the sea and brings it to the Dock.',
+}));
+add(u({
+  id: 'transportShip', name: 'Transport Ship', classes: ship, age: 0, trainedAt: 'dock', slot: 1,
+  cost: { wood: 125 }, trainTime: 46, pop: 1, hp: 100, speed: 1.45, los: 5, attack: 0, attackType: 'melee',
+  range: 0, reload: 2, meleeArmor: 4, pierceArmor: 8, radius: 0.55, model: 'transportShip', naval: true, transport: true, garrisonCapacity: 5, noGarrison: true,
+  description: 'Carries up to 5 land units across water. Right-click land to unload.',
+}));
+add(u({
+  id: 'tradeCog', name: 'Trade Cog', classes: [...ship, 'trade'], age: 1, trainedAt: 'dock', slot: 2,
+  cost: { wood: 100, gold: 50 }, trainTime: 36, pop: 1, hp: 80, speed: 1.32, los: 6, attack: 0, attackType: 'melee',
+  range: 0, reload: 2, meleeArmor: 0, pierceArmor: 6, radius: 0.5, model: 'tradeCog', naval: true, trader: true, noGarrison: true,
+  description: 'Sails between your Dock and a distant Dock, earning gold.',
+}));
+const warship = ['ship', 'naval', 'warship'];
+add(u({
+  id: 'galley', name: 'Galley', classes: warship, age: 1, trainedAt: 'dock', slot: 3, lineOf: 'galley',
+  cost: { wood: 90, gold: 30 }, trainTime: 60, pop: 1, hp: 120, speed: 1.43, los: 7, attack: 6, attackType: 'pierce',
+  bonus: { ship: 4 }, range: 5, reload: 3, accuracy: 0.9, projectile: 'arrow', projectileSpeed: 8,
+  meleeArmor: 0, pierceArmor: 6, radius: 0.6, model: 'galley', naval: true, noGarrison: true,
+  description: 'Oared warship with archers. Good all-round naval unit.',
+}));
+add(u({
+  id: 'warGalley', name: 'War Galley', classes: warship, age: 2, trainedAt: 'dock', slot: 3, lineOf: 'galley',
+  cost: { wood: 90, gold: 30 }, trainTime: 36, pop: 1, hp: 135, speed: 1.43, los: 8, attack: 7, attackType: 'pierce',
+  bonus: { ship: 5 }, range: 6, reload: 3, accuracy: 0.9, projectile: 'arrow', projectileSpeed: 8,
+  meleeArmor: 0, pierceArmor: 6, radius: 0.6, model: 'warGalley', naval: true, noGarrison: true, description: 'Improved galley.',
+}));
+add(u({
+  id: 'galleon', name: 'Galleon', classes: warship, age: 3, trainedAt: 'dock', slot: 3, lineOf: 'galley',
+  cost: { wood: 90, gold: 30 }, trainTime: 36, pop: 1, hp: 165, speed: 1.43, los: 9, attack: 8, attackType: 'pierce',
+  bonus: { ship: 6 }, range: 7, reload: 3, accuracy: 0.9, projectile: 'arrow', projectileSpeed: 8,
+  meleeArmor: 0, pierceArmor: 8, radius: 0.65, model: 'galleon', naval: true, noGarrison: true, description: 'The finest archer warship.',
+}));
+add(u({
+  id: 'fireShip', name: 'Fire Ship', classes: warship, age: 2, trainedAt: 'dock', slot: 4, lineOf: 'fireShip',
+  cost: { wood: 75, gold: 45 }, trainTime: 36, pop: 1, hp: 100, speed: 1.35, los: 5, attack: 3, attackType: 'pierce',
+  bonus: { ship: 5, building: 2 }, range: 2.5, reload: 0.5, accuracy: 1, projectile: 'fire', projectileSpeed: 8,
+  meleeArmor: 0, pierceArmor: 6, radius: 0.55, model: 'fireShip', naval: true, noGarrison: true,
+  description: 'Sprays burning oil at close range. Destroys other ships.',
+}));
+add(u({
+  id: 'fastFireShip', name: 'Fast Fire Ship', classes: warship, age: 3, trainedAt: 'dock', slot: 4, lineOf: 'fireShip',
+  cost: { wood: 75, gold: 45 }, trainTime: 36, pop: 1, hp: 120, speed: 1.43, los: 6, attack: 4, attackType: 'pierce',
+  bonus: { ship: 6, building: 2 }, range: 2.5, reload: 0.5, accuracy: 1, projectile: 'fire', projectileSpeed: 8,
+  meleeArmor: 0, pierceArmor: 8, radius: 0.55, model: 'fastFireShip', naval: true, noGarrison: true, description: 'Improved fire ship.',
+}));
+add(u({
+  id: 'demolitionShip', name: 'Demolition Ship', classes: warship, age: 2, trainedAt: 'dock', slot: 5, lineOf: 'demolitionShip',
+  cost: { wood: 70, gold: 50 }, trainTime: 31, pop: 1, hp: 60, speed: 1.6, los: 6, attack: 110, attackType: 'melee',
+  bonus: { building: 150, ship: 40 }, range: 0, reload: 1, splash: 2, friendlyFire: true, meleeArmor: 0, pierceArmor: 3, radius: 0.45,
+  model: 'demolitionShip', naval: true, selfDestruct: true, noGarrison: true,
+  description: 'A floating powder keg that explodes on contact, wrecking ships and docks.',
+}));
+add(u({
+  id: 'heavyDemolitionShip', name: 'Heavy Demolition Ship', classes: warship, age: 3, trainedAt: 'dock', slot: 5, lineOf: 'demolitionShip',
+  cost: { wood: 70, gold: 50 }, trainTime: 31, pop: 1, hp: 70, speed: 1.6, los: 6, attack: 140, attackType: 'melee',
+  bonus: { building: 180, ship: 50 }, range: 0, reload: 1, splash: 2.5, friendlyFire: true, meleeArmor: 0, pierceArmor: 5, radius: 0.45,
+  model: 'heavyDemolitionShip', naval: true, selfDestruct: true, noGarrison: true, description: 'A bigger floating powder keg.',
+}));
+add(u({
+  id: 'cannonGalleon', name: 'Cannon Galleon', classes: [...warship, 'gunpowder'], age: 3, trainedAt: 'dock', slot: 6, lineOf: 'cannonGalleon',
+  cost: { wood: 200, gold: 150 }, trainTime: 46, pop: 1, hp: 120, speed: 1.1, los: 14, attack: 35, attackType: 'pierce',
+  bonus: { building: 200 }, range: 13, minRange: 3, reload: 10, accuracy: 0.9, projectile: 'cannonball', projectileSpeed: 12, splash: 0.5,
+  meleeArmor: 0, pierceArmor: 6, radius: 0.7, model: 'cannonGalleon', naval: true, noGarrison: true,
+  description: 'Bombards coastal buildings from long range. Requires Chemistry.',
+}));
+
+/* ------------------------------------------------------------------ */
 /* Gaia animals                                                         */
 /* ------------------------------------------------------------------ */
 add(u({

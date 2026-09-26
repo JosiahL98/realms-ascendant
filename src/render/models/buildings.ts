@@ -969,7 +969,34 @@ const wonder: Maker = (g, pc, p) => {
   return y0 + 2.6;
 };
 
+const dock: Maker = (g, pc, p) => {
+  // pier on piles over the water; the model's y=0 is the water surface
+  g.c(0x4a3420, 0.06);
+  for (const x of [-1.3, -0.45, 0.45, 1.3]) for (const z of [-1.3, -0.45, 0.45, 1.3]) g.cyl(x, -1.2, z, 0.07, 0.07, 1.45, 6);
+  g.c(0x8a6a42, 0.06).mt(D.planks).box(0, 0.15, 0, 2.9, 0.1, 2.9);
+  g.mt(0);
+  g.c(0x5a3e24).box(0, 0.25, 1.43, 2.9, 0.05, 0.05).box(1.43, 0.25, 0, 0.05, 0.05, 2.9);
+  for (const x of [-1.4, -0.7, 0, 0.7, 1.4]) g.cyl(x, 0.25, 1.43, 0.03, 0.03, 0.22, 4);
+  // storehouse at the back
+  walls(g, p, -0.55, 0.25, -0.65, 1.5, 0.75, 1.3);
+  const top = roof(g, p, -0.55, 1.0, -0.65, 1.5, 1.3);
+  door(g, p, -0.55, 0.25, 0.0, 0.3, 0.5);
+  // crane
+  g.c(p.wood, 0.06).cyl(1.0, 0.25, -0.9, 0.06, 0.05, 1.5, 6);
+  g.push().translate(1.0, 1.7, -0.9).rotateZ(-1.2).box(0, 0, 0, 0.05, 1.0, 0.05).pop();
+  g.c(0x3a2a1a).box(1.85, 1.2, -0.9, 0.015, 0.6, 0.015);
+  // barrels & fish baskets
+  barrel(g, 1.05, 0.25, 0.7, 0.1);
+  barrel(g, 0.8, 0.25, 0.95, 0.1);
+  g.c(0xa88450, 0.06).mt(D.thatch).cyl(0.4, 0.25, 1.0, 0.12, 0.14, 0.12, 7);
+  g.mt(0);
+  g.c(0xb8c0c8).sphere(0.4, 0.4, 1.0, 0.06, 5, 3, 1.5, 0.6, 1);
+  flag(g, pc, 1.3, 0.25, 1.3, 1.1, 0.3);
+  return top;
+};
+
 const MAKERS: Record<string, Maker> = {
+  dock,
   house, townCenter, barracks, archeryRange, stable, blacksmith, market, mill, lumberCamp, miningCamp, farm, outpost,
   palisade, stoneWall, gate, watchTower: tower(0), guardTower: tower(1), keep: tower(2), monastery: temple, university,
   siegeWorkshop, castle, wonder,

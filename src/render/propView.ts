@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Game } from '../sim/game';
 import type { ResourceNode } from '../sim/entities';
-import { berryModel, carcassModel, felledModel, goldModel, relicModel, stoneModel, treeModel, TREE_VARIANTS } from './models/nature';
+import { berryModel, carcassModel, felledModel, fishModel, goldModel, relicModel, stoneModel, treeModel, TREE_VARIANTS } from './models/nature';
 import { makeWorldMaterial } from './materials';
 import { InstBatch } from './instBatch';
 
@@ -17,6 +17,7 @@ export class PropView {
   private berries: InstBatch[] = [];
   private carcass = new Map<string, InstBatch>();
   private relic: InstBatch;
+  private fish: InstBatch;
   private m = new THREE.Matrix4();
   private q = new THREE.Quaternion();
   private p = new THREE.Vector3();
@@ -40,6 +41,7 @@ export class PropView {
     for (let s = 0; s < 2; s++) this.berries.push(new InstBatch(this.group, berryModel(s), this.mat, { cap: 64 }));
     for (const k of ['sheep', 'deer', 'boar']) this.carcass.set(k, new InstBatch(this.group, carcassModel(k), this.mat, { cap: 16, shadow: false }));
     this.relic = new InstBatch(this.group, relicModel(), this.mat, { cap: 16 });
+    this.fish = new InstBatch(this.group, fishModel(), this.mat, { cap: 128, shadow: false });
   }
 
   markDirty(): void {
@@ -98,6 +100,8 @@ export class PropView {
     for (const b of this.berries) b.begin();
     for (const b of this.carcass.values()) b.begin();
     this.relic.begin();
+    this.fish.begin();
+    const now = performance.now() / 1000;
     const vis = game.vision.visible.get(localTeam);
     for (const r of game.resources) {
       if (!r.alive || r.type === 'tree') continue;
@@ -111,6 +115,17 @@ export class PropView {
         continue;
       }
       if (!r.seen) continue;
+      if (r.type === 'fish') {
+        const count = Math.max(1, Math.ceil((r.amount / r.maxAmount) * 5));
+        for (let k = 0; k < count; k++) {
+          const a = now * (0.5 + (k % 3) * 0.15) + k * 1.3 + r.id;
+          const rad = 0.18 + (k % 2) * 0.12;
+          this.q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, -a);
+          this.m.compose(this.p.set(r.x + Math.cos(a) * rad, game.map.waterLevel - 0.05 - (k % 3) * 0.04, r.z + Math.sin(a) * rad), this.q, this.s.set(1, 1, 1));
+          this.fish.add(this.m);
+        }
+        continue;
+      }
       const frac = r.maxAmount > 0 ? r.amount / r.maxAmount : 1;
       const y = game.map.heightAt(r.x, r.z);
       this.q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, r.rot + r.id * 1.7);
@@ -136,5 +151,6 @@ export class PropView {
     for (const b of this.berries) b.end();
     for (const b of this.carcass.values()) b.end();
     this.relic.end();
+    this.fish.end();
   }
 }

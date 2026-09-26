@@ -77,6 +77,14 @@ export interface UnitDef {
   /** Ranged unit that can only hit ground (mangonel), not a specific target. */
   groundAttack?: boolean;
   noGarrison?: boolean;
+  /** Moves on water. */
+  naval?: boolean;
+  /** Gathers fish only, drops off at docks. */
+  fisher?: boolean;
+  /** Carries land units (transport ship). */
+  transport?: boolean;
+  /** Destroys itself when it strikes (demolition ship). */
+  selfDestruct?: boolean;
 }
 
 export interface BuildingAttack {

@@ -123,6 +123,7 @@ export class Game {
     this.vision = new Vision(this);
     generateMap(this);
     this.map.refreshAll();
+    this.map.labelWaterBodies();
     for (const p of this.players) this.recomputePop(p.id);
     this.spatial.rebuild(this.units);
     this.vision.update(true);
@@ -162,7 +163,7 @@ export class Game {
     const b = new Building(this.nextId++, def, owner, tx, tz, rotated);
     b.stats = this.players[owner].buildingStats.get(type)!;
     const fh = this.map.footprintHeight(tx, tz, b.w, b.h);
-    b.baseY = def.walkable ? fh.avg : fh.max;
+    b.baseY = def.naval ? this.map.waterLevel + 0.02 : def.walkable ? fh.avg : fh.max;
     if (built) {
       b.built = true;
       b.progress = 1;
@@ -191,7 +192,8 @@ export class Game {
     for (const u of this.units) {
       if (!u.alive || u.garrisonedIn) continue;
       if (u.x >= b.tx - 0.1 && u.x <= b.tx + b.w + 0.1 && u.z >= b.tz - 0.1 && u.z <= b.tz + b.h + 0.1) {
-        const p = this.pathfinder.nearestPassable(u.x, u.z, this.teamOf[u.owner], 8);
+        const p = this.pathfinder.setDomain(!!u.def.naval).nearestPassable(u.x, u.z, this.teamOf[u.owner], 8);
+        this.pathfinder.setDomain(false);
         if (p) {
           u.x = u.px = p.x;
           u.z = u.pz = p.z;
@@ -240,11 +242,20 @@ export class Game {
       if (b && b.kind === 'building') b.garrison = b.garrison.filter((id) => id !== u.id);
       else if (b && b.kind === 'unit') b.cargo = b.cargo.filter((id) => id !== u.id);
     }
-    // eject cargo (rams)
+    // eject cargo (rams); cargo of a sunken transport drowns unless it is next to the shore
     for (const cid of u.cargo) {
       const c = this.unit(cid);
-      if (c) {
-        c.garrisonedIn = 0;
+      if (!c) continue;
+      c.garrisonedIn = 0;
+      if (u.def.naval) {
+        const p = this.pathfinder.setDomain(false).nearestPassable(u.x, u.z, this.teamOf[c.owner], 2);
+        if (p) {
+          c.x = c.px = p.x;
+          c.z = c.pz = p.z;
+        } else {
+          this.killUnit(c, killerOwner);
+        }
+      } else {
         c.x = c.px = u.x + this.rng.range(-0.5, 0.5);
         c.z = c.pz = u.z + this.rng.range(-0.5, 0.5);
       }
@@ -281,6 +292,7 @@ export class Game {
       this.map.clearObstacle(b.tx, b.tz, b.w, b.h, b.id);
     }
     // eject garrison
+    this.pathfinder.setDomain(false);
     for (const id of b.garrison) {
       const u = this.unit(id);
       if (!u) continue;
@@ -384,11 +396,12 @@ export class Game {
     return list;
   }
 
-  nearestDropoff(owner: number, res: Res, x: number, z: number): Building | null {
+  nearestDropoff(owner: number, res: Res, x: number, z: number, navalOnly = false, exclude = 0): Building | null {
     let best: Building | null = null;
     let bd = Infinity;
     for (const b of this.dropoffsFor(owner)) {
-      if (!b.alive || !b.built || !b.def.dropoff!.includes(res)) continue;
+      if (!b.alive || !b.built || !b.def.dropoff!.includes(res) || b.id === exclude) continue;
+      if (navalOnly && !b.def.naval) continue;
       const d = distToRect(x, z, b.tx, b.tz, b.tx + b.w, b.tz + b.h);
       if (d < bd) {
         bd = d;
@@ -399,7 +412,7 @@ export class Game {
   }
 
   /** Find the nearest resource of a gather kind around a point, preferring less crowded ones. */
-  findResource(kind: GatherKind, x: number, z: number, maxR: number, excludeId = 0): ResourceNode | null {
+  findResource(kind: GatherKind, x: number, z: number, maxR: number, excludeId = 0, waterBody = 0): ResourceNode | null {
     let best: ResourceNode | null = null;
     let bs = Infinity;
     const m = this.map;
@@ -416,6 +429,7 @@ export class Game {
             if (!id || id === excludeId) continue;
             const e = this.entities.get(id);
             if (!e || e.kind !== 'resource' || e.gather !== kind || e.amount <= 0) continue;
+            if (!m.hasOpenNeighbor(tx, tz)) continue;
             const d = Math.hypot(e.x - x, e.z - z) + this.crowd(e) * (kind === 'forage' ? 2.5 : 1.2);
             if (d < bs) {
               bs = d;
@@ -429,6 +443,7 @@ export class Game {
     }
     for (const r of this.resources) {
       if (!r.alive || r.gather !== kind || r.id === excludeId || r.amount <= 0) continue;
+      if (waterBody && m.waterBody[m.idx(r.tx, r.tz)] !== waterBody) continue;
       const d = Math.hypot(r.x - x, r.z - z);
       if (d > maxR) continue;
       const s = d + this.crowd(r) * 1.5;

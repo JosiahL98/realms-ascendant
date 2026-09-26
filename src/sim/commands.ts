@@ -20,6 +20,7 @@ export type Command =
   | { c: 'garrison'; units: number[]; target: number }
   | { c: 'ungarrison'; building: number; unit?: number }
   | { c: 'unload'; unit: number }
+  | { c: 'unloadAt'; units: number[]; x: number; z: number }
   | { c: 'train'; building: number; unit: string; count?: number }
   | { c: 'research'; building: number; tech: string }
   | { c: 'cancel'; building: number; index: number }
@@ -105,6 +106,28 @@ export function canPlace(game: Game, pid: number, type: string, tx: number, tz: 
   // computer players plan with full map knowledge; humans must explore first
   const exp = game.players[pid]?.isHuman ? game.vision.explored.get(team) : undefined;
   if (tx < 0 || tz < 0 || tx + w > m.n || tz + h > m.n) return false;
+  if (def.naval) {
+    // docks: every tile open water, touching land somewhere along the edge
+    let shore = false;
+    for (let z = tz; z < tz + h; z++)
+      for (let x = tx; x < tx + w; x++) {
+        const i = m.idx(x, z);
+        if (m.navalBlocked[i]) return false;
+        if (exp && !exp[i]) return false;
+      }
+    for (const r of game.resources) {
+      if (r.alive && r.type === 'fish' && r.tx >= tx && r.tx < tx + w && r.tz >= tz && r.tz < tz + h) return false;
+    }
+    for (let z = tz - 1; z <= tz + h && !shore; z++)
+      for (let x = tx - 1; x <= tx + w; x++) {
+        if (x >= tx && x < tx + w && z >= tz && z < tz + h) continue;
+        if (m.inBounds(x, z) && !m.tileWater(x, z) && !m.landBlocked[m.idx(x, z)]) {
+          shore = true;
+          break;
+        }
+      }
+    return shore;
+  }
   let minH = Infinity, maxH = -Infinity;
   for (let z = tz; z < tz + h; z++) {
     for (let x = tx; x < tx + w; x++) {
@@ -158,6 +181,7 @@ export function formationTargets(game: Game, units: Unit[], x: number, z: number
   const cols = Math.max(2, Math.ceil(Math.sqrt(n * 2.2)));
   const out = new Map<Unit, { x: number; z: number }>();
   const team = game.teamOf[units[0].owner];
+  game.pathfinder.setDomain(!!units[0].def.naval);
   let row = 0;
   for (let i = 0; i < sorted.length; i += cols) {
     const rowUnits = sorted.slice(i, i + cols);
@@ -183,6 +207,7 @@ export function formationTargets(game: Game, units: Unit[], x: number, z: number
     });
     row++;
   }
+  game.pathfinder.setDomain(false);
   return units.map((u) => out.get(u)!);
 }
 
@@ -193,8 +218,11 @@ export function issueCommand(game: Game, pid: number, cmd: Command): CmdResult {
     case 'move': {
       const us = ownedUnits(game, pid, cmd.units);
       if (!us.length) return fail('no units');
-      const targets = formationTargets(game, us, cmd.x, cmd.z);
-      us.forEach((u, i) => setOrder(game, u, { t: 'move', x: targets[i].x, z: targets[i].z, attackMove: cmd.attackMove }, cmd.queue));
+      for (const group of [us.filter((u) => !u.def.naval), us.filter((u) => u.def.naval)]) {
+        if (!group.length) continue;
+        const targets = formationTargets(game, group, cmd.x, cmd.z);
+        group.forEach((u, i) => setOrder(game, u, { t: 'move', x: targets[i].x, z: targets[i].z, attackMove: cmd.attackMove }, cmd.queue));
+      }
       return OK;
     }
     case 'attack': {
@@ -224,7 +252,7 @@ export function issueCommand(game: Game, pid: number, cmd: Command): CmdResult {
     case 'gather': {
       const t = game.get(cmd.target);
       if (!t || !t.alive) return fail('invalid target');
-      const vills = ownedUnits(game, pid, cmd.units).filter((u) => u.def.gatherer);
+      const vills = ownedUnits(game, pid, cmd.units).filter((u) => u.def.gatherer && (!u.def.fisher || (t.kind === 'resource' && t.gather === 'fish')));
       for (const u of vills) {
         const wasGather = u.order.t === 'gather';
         setOrder(game, u, { t: 'gather', target: t.id }, cmd.queue);
@@ -284,6 +312,7 @@ export function issueCommand(game: Game, pid: number, cmd: Command): CmdResult {
       if (!t || !t.alive) return fail('invalid');
       for (const u of ownedUnits(game, pid, cmd.units)) {
         if (t.kind === 'building' && !canGarrisonIn(game, u, t) && !(u.relicId && t.type === 'monastery')) continue;
+        if (t.kind === 'unit' && (u.def.naval || t.owner !== pid || (!t.def.transport && !t.def.garrisonCapacity))) continue;
         setOrder(game, u, { t: 'garrison', target: t.id });
       }
       return OK;
@@ -292,6 +321,10 @@ export function issueCommand(game: Game, pid: number, cmd: Command): CmdResult {
       const b = game.building(cmd.building);
       if (!b || b.owner !== pid) return fail('invalid');
       ungarrison(game, b, cmd.unit ?? 0);
+      return OK;
+    }
+    case 'unloadAt': {
+      for (const u of ownedUnits(game, pid, cmd.units)) if (u.def.transport && u.cargo.length) setOrder(game, u, { t: 'unload', x: cmd.x, z: cmd.z });
       return OK;
     }
     case 'unload': {
