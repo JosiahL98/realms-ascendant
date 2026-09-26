@@ -366,7 +366,20 @@ export class Renderer {
     this.fogTex.needsUpdate = true;
   }
 
-  colorOf = (owner: number): number => this.game.players[owner]?.color.hex ?? 0xffffff;
+  private dyes = new Map<number, number>();
+
+  /** Player colour as a cloth dye on models: a little deeper and less saturated than the UI swatch. */
+  colorOf = (owner: number): number => {
+    let c = this.dyes.get(owner);
+    if (c === undefined) {
+      const hsl = { h: 0, s: 0, l: 0 };
+      const col = new THREE.Color(this.game.players[owner]?.color.hex ?? 0xffffff);
+      col.getHSL(hsl);
+      c = col.setHSL(hsl.h, hsl.s * 0.82, hsl.l * 0.9).getHex();
+      this.dyes.set(owner, c);
+    }
+    return c;
+  };
 
   render(alpha: number): void {
     const now = performance.now();

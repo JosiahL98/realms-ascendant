@@ -45,7 +45,7 @@ export class UnitView {
 
   constructor() {
     for (let i = 0; i < 40; i++) this.world.push(new THREE.Matrix4());
-    this.mat = makeWorldMaterial({ fog: 'none' });
+    this.mat = makeWorldMaterial({ fog: 'none', detail: true });
     this.matFade = this.mat;
   }
 
