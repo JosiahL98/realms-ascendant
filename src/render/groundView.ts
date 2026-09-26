@@ -87,11 +87,18 @@ export class GroundDetailView {
             const i = z * n + x;
             const t = map.terrain[i];
             if (t === T.deep || t === T.road) continue;
-            const isLand = (xx: number, zz: number) => xx >= 0 && zz >= 0 && xx < n && zz < n && !isWet(xx, zz);
+            // reeds like muddy or grassy banks, not sandy beaches
+            const marsh = (xx: number, zz: number) => {
+              if (xx < 0 || zz < 0 || xx >= n || zz >= n || isWet(xx, zz)) return false;
+              const lt = map.terrain[zz * n + xx];
+              return lt !== T.sand && lt !== T.snow;
+            };
+            const marshy = marsh(x + 1, z) || marsh(x - 1, z) || marsh(x, z + 1) || marsh(x, z - 1);
+            const nearLand = (xx: number, zz: number) => xx >= 0 && zz >= 0 && xx < n && zz < n && !isWet(xx, zz);
             if (t === T.water) {
               // reeds standing in the shallow margin of lakes and rivers
-              const nearLand = isLand(x + 1, z) || isLand(x - 1, z) || isLand(x, z + 1) || isLand(x, z - 1);
-              if (!nearLand || map.heightAt(x + 0.5, z + 0.5) < map.waterLevel - 0.35) continue;
+              const edge = nearLand(x + 1, z) || nearLand(x - 1, z) || nearLand(x, z + 1) || nearLand(x, z - 1);
+              if (!edge || map.heightAt(x + 0.5, z + 0.5) < map.waterLevel - 0.35) continue;
             }
             density.fill(0);
             // patchy: bare stretches, then clumps of thick growth
@@ -127,13 +134,13 @@ export class GroundDetailView {
                 density[ROCK_A] = density[ROCK_B] = 0.03;
                 break;
               case T.shallows:
-                density[REED] = isWet(x + 1, z) && isWet(x - 1, z) && isWet(x, z + 1) && isWet(x, z - 1) ? 0.1 : 1.2;
+                density[REED] = marshy ? 1.2 : 0.1;
                 break;
               case T.water:
-                density[REED] = 0.3 + 0.9 * lush;
+                density[REED] = marshy ? 0.3 + 0.9 * lush : 0.4 * lush;
                 break;
             }
-            if (shore && t !== T.snow) density[REED] = 0.6 + 0.8 * lush;
+            if (shore && t !== T.snow) density[REED] = t === T.sand ? 0.35 * lush : 0.6 + 0.8 * lush;
             for (let k = 0; k < kinds.length; k++) {
               let count = Math.floor(density[k]);
               if (rng.next() < density[k] - count) count++;

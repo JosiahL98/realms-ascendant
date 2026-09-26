@@ -166,27 +166,45 @@ export class TerrainView {
           float h = texture2D(uHeight, (p + 0.5) / (uMapSize + 1.0)).r;
           float depth = uWaterLevel - h;
           if (depth < -0.01) discard;
-          // gently scrolling swells
+          // gently scrolling swells tint the colour
           vec2 a = p * 0.045 + vec2(uTime * 0.010, uTime * 0.006);
-          vec2 b = p * 0.11 - vec2(uTime * 0.013, -uTime * 0.009);
           float n1 = texture2D(uNoise, a).g;
-          float n2 = texture2D(uNoise, b).b;
-          float e = 0.02;
-          float nx = texture2D(uNoise, b + vec2(e, 0.0)).b - n2;
-          float nz = texture2D(uNoise, b + vec2(0.0, e)).b - n2;
-          vec3 nrm = normalize(vec3(-nx * 6.0, 1.0, -nz * 6.0));
+          float n2 = texture2D(uNoise, p * 0.11 - vec2(uTime * 0.013, -uTime * 0.009)).b;
+          // large slow swells: normals from the low-frequency noise channel
+          const float e = 1.0 / 128.0;
+          vec2 ra = p * 0.05 + vec2(uTime * 0.008, uTime * 0.005);
+          float ha = texture2D(uNoise, ra).r;
+          vec2 grad = vec2(texture2D(uNoise, ra + vec2(e, 0.0)).r - ha, texture2D(uNoise, ra + vec2(0.0, e)).r - ha);
+          float calm = mix(0.3, 1.0, smoothstep(0.0, 0.8, depth));
+          vec3 nrm = normalize(vec3(-grad.x * 14.0 * calm, 1.0, -grad.y * 14.0 * calm));
           vec3 viewDir = normalize(vec3(0.61, 0.5, 0.61));
-          vec3 shallow = vec3(0.12, 0.36, 0.42);
+          vec3 shallow = vec3(0.08, 0.32, 0.42);
           vec3 deep = vec3(0.04, 0.14, 0.3);
           vec3 col = mix(shallow, deep, smoothstep(0.0, 1.8, depth));
           col *= 0.9 + (n1 - 0.5) * 0.3 + (n2 - 0.5) * 0.16;
-          float spec = pow(max(dot(reflect(-uSunDir, nrm), viewDir), 0.0), 60.0);
-          col += vec3(0.55, 0.55, 0.45) * spec * 0.35;
+          // sunlight dappling the shallows
+          vec2 ca = p * 0.42 + vec2(uTime * 0.045, uTime * 0.03);
+          vec2 cb = mat2(0.6, 0.8, -0.8, 0.6) * p * 0.42 - vec2(uTime * 0.035, -uTime * 0.04);
+          float caust = pow(1.0 - abs(texture2D(uNoise, ca).g - texture2D(uNoise, cb).g) * 2.2, 7.0);
+          col += vec3(0.42, 0.52, 0.46) * caust * smoothstep(0.9, 0.05, depth) * 0.35;
+          // sky reflection on swells tilted away from the viewer
+          float fres = 0.03 + 0.97 * pow(1.0 - max(dot(nrm, viewDir), 0.0), 5.0);
+          col = mix(col, vec3(0.42, 0.56, 0.7), clamp(fres * 1.3, 0.0, 0.3));
+          // soft wave crests drifting across open water, warped by the swell noise
+          float w1 = sin(dot(p, vec2(0.8, 0.6)) * 3.0 - uTime * 0.8 + n1 * 10.0 + n2 * 5.0);
+          float w2 = sin(dot(p, vec2(-0.45, 0.9)) * 2.3 - uTime * 0.6 + n2 * 9.0 - n1 * 4.0);
+          float crest = smoothstep(0.82, 1.0, w1) * 0.7 + smoothstep(0.86, 1.0, w2) * 0.5;
+          col += vec3(0.08, 0.11, 0.12) * crest * calm;
+          vec3 hv = normalize(uSunDir + viewDir);
+          col += vec3(1.0, 0.95, 0.82) * pow(max(dot(nrm, hv), 0.0), 40.0) * 0.25;
+          // wind-blown whitecaps out at sea
+          float cap = smoothstep(0.74, 0.86, n1 * 0.55 + ha * 0.45) * smoothstep(0.6, 1.4, depth) * smoothstep(0.6, 1.0, w1);
+          col = mix(col, vec3(0.8, 0.86, 0.88), cap * 0.3);
           // shore foam bands
           float band = sin(depth * 40.0 - uTime * 1.5 + n1 * 6.0) * 0.5 + 0.5;
           float foam = smoothstep(0.1, 0.0, depth) * (0.35 + 0.4 * band);
           col = mix(col, vec3(0.72, 0.78, 0.76), foam * 0.6);
-          float alpha = mix(0.45, 0.94, smoothstep(0.0, 0.6, depth));
+          float alpha = mix(0.56, 0.94, smoothstep(0.0, 0.6, depth));
           alpha = max(alpha, foam * 0.7);
           float fw = texture2D(uFogTex, p / uMapSize).r;
           float k = fw < 0.5 ? fw * 0.62 : mix(0.31, 1.0, (fw - 0.5) * 2.0);
