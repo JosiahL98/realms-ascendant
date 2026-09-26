@@ -86,27 +86,43 @@ export function felledModel(variant: number): THREE.BufferGeometry {
   return g.build();
 }
 
+/** Gold ore: dark host rock shot through with golden boulders and bright nuggets (photo stone detail). */
 export function goldModel(sub: number): THREE.BufferGeometry {
   const g = new GeoBuilder(300 + sub);
-  g.c(0x6e6048, 0.12).blob(0, 0.12, 0, 0.44, 0.25, 0.5, 7);
+  g.mt(DETAIL.stone);
+  g.c(0x6a5c48, 0.1).blob(0, 0.1, 0, 0.44, 0.25, 0.55, 8);
   for (let i = 0; i < 7; i++) {
     const a = (i / 7) * Math.PI * 2 + sub;
-    const r = 0.2 + (i % 3) * 0.08;
-    g.c(i % 2 ? 0xe8c030 : 0xd6a41c, 0.15).blob(Math.cos(a) * r, 0.2 + (i % 2) * 0.06, Math.sin(a) * r, 0.13 + (i % 3) * 0.03, 0.3, 0.8, 5);
+    const r = 0.22 + (i % 3) * 0.07;
+    const gold = i % 3 !== 1;
+    g.c(gold ? (i % 2 ? 0xd8a632 : 0xc89424) : 0x7a6a50, 0.12)
+      .blob(Math.cos(a) * r, 0.16 + (i % 2) * 0.05, Math.sin(a) * r, 0.13 + (i % 3) * 0.035, 0.35, 0.8, 6);
   }
-  g.c(0xf2d24a, 0.12).blob(0, 0.36, 0, 0.16, 0.3, 0.9, 5);
+  g.c(0xe0b23a, 0.1).blob(0.02, 0.32, -0.01, 0.17, 0.3, 0.85, 6);
+  g.mt(0);
+  for (let i = 0; i < 9; i++) {
+    const a = i * 2.4 + sub, r = 0.12 + (i % 4) * 0.08;
+    g.c(0xffd84a, 0.08).sphere(Math.cos(a) * r, 0.3 + (i % 3) * 0.05 - r * 0.25, Math.sin(a) * r, 0.035 + (i % 2) * 0.015, 5, 3);
+  }
   return g.build();
 }
 
+/** Stone quarry: a heap of pale grey boulders and chips (photo stone detail). */
 export function stoneModel(sub: number): THREE.BufferGeometry {
   const g = new GeoBuilder(400 + sub);
-  const cols = [0x9c9a92, 0x88857c, 0xaaa79c, 0x7c7a72];
-  g.c(cols[sub % 4], 0.12).blob(0, 0.15, 0, 0.42, 0.3, 0.6, 6);
-  for (let i = 0; i < 5; i++) {
-    const a = (i / 5) * Math.PI * 2 + sub * 0.7;
-    g.c(cols[(i + sub) % 4], 0.14).blob(Math.cos(a) * 0.27, 0.16, Math.sin(a) * 0.27, 0.18 + (i % 2) * 0.05, 0.35, 0.8, 5);
+  g.mt(DETAIL.stone);
+  const cols = [0x969288, 0x86827a, 0xa29e94, 0x7c7870];
+  g.c(cols[sub % 4], 0.08).blob(0, 0.13, 0, 0.4, 0.28, 0.65, 8);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + sub * 0.7;
+    const r = 0.27 + (i % 2) * 0.06;
+    g.c(cols[(i + sub) % 4], 0.1).blob(Math.cos(a) * r, 0.13, Math.sin(a) * r, 0.15 + (i % 3) * 0.035, 0.3, 0.8, 6);
   }
-  g.c(0xb8b5aa, 0.1).blob(0.05, 0.38, -0.02, 0.17, 0.3, 0.8, 5);
+  g.c(0xa8a498, 0.08).blob(0.05, 0.36, -0.02, 0.18, 0.28, 0.8, 6);
+  for (let i = 0; i < 5; i++) {
+    const a = i * 1.9 + sub;
+    g.c(cols[(i + 2) % 4], 0.1).blob(Math.cos(a) * 0.46, 0.02, Math.sin(a) * 0.46, 0.05 + (i % 2) * 0.02, 0.3, 0.7, 5);
+  }
   return g.build();
 }
 

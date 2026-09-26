@@ -44,6 +44,7 @@ export class PropView {
   private matLeaves = makeWorldMaterial({ fog: 'origin', sway: true, leaves: true });
   private matLeavesStill = makeWorldMaterial({ fog: 'origin', leaves: true });
   private mat = makeWorldMaterial({ fog: 'origin' });
+  private matRock = makeWorldMaterial({ fog: 'origin', detail: true });
 
   constructor() {
     for (let v = 0; v < TREE_VARIANTS; v++) {
@@ -56,8 +57,8 @@ export class PropView {
       this.felledLeaves.push(new InstBatch(this.group, felledLeaves(v), this.matLeavesStill, { cap: 64, noAO: true }));
     }
     for (let s = 0; s < 3; s++) {
-      this.gold.push(new InstBatch(this.group, goldModel(s), this.mat, { cap: 64 }));
-      this.stone.push(new InstBatch(this.group, stoneModel(s), this.mat, { cap: 64 }));
+      this.gold.push(new InstBatch(this.group, goldModel(s), this.matRock, { cap: 64 }));
+      this.stone.push(new InstBatch(this.group, stoneModel(s), this.matRock, { cap: 64 }));
     }
     for (let s = 0; s < 2; s++) {
       this.berries.push(new InstBatch(this.group, berryModel(s), this.mat, { cap: 64 }));

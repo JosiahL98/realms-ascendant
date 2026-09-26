@@ -506,7 +506,7 @@ export function treeParts(variant: number, sub: number): { trunk: THREE.BufferGe
         const a = (i / fronds) * Math.PI * 2 + sub + rng.range(-0.15, 0.15);
         const dir = new THREE.Vector3(Math.cos(a), 0, Math.sin(a));
         const young = i % 3 === 0;
-        cb.frond(top, dir, young ? 0.8 : 1.0, 0.2, young ? 0.38 : 0.28, young ? 0.5 : 0.85, 0.92 + rng.range(-0.06, 0.08));
+        cb.frond(top, dir, young ? 0.8 : 1.0, 0.2, young ? 0.4 : 0.32, young ? 0.35 : 0.62, 0.92 + rng.range(-0.06, 0.08));
       }
       break;
     }
