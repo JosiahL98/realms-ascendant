@@ -153,6 +153,7 @@ if (params.get('autostart')) {
     reveal: (params.get('reveal') ?? 'normal') as GameSetup['reveal'],
     victory: 'standard',
     startAge: Number(params.get('age') ?? 0) as GameSetup['startAge'],
+    spectator: !!params.get('spectate'),
   });
 } else {
   menus.showMain();

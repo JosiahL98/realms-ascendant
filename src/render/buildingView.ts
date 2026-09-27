@@ -95,7 +95,7 @@ export class BuildingView {
     for (const b of game.buildings) {
       if (!b.alive) continue;
       const own = game.teamOf[b.owner] === localTeam;
-      if (!own && !(b.seenBy & bit)) continue;
+      if (!own && localTeam >= 0 && !(b.seenBy & bit)) continue;
       if (!inView(b.x, b.z, Math.max(b.w, b.h) + 3)) continue;
       const style = game.players[b.owner].civ.style;
       const bb = this.batch(b.type, style);

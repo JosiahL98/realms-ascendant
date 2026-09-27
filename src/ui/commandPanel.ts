@@ -33,7 +33,7 @@ export function computeButtons(s: Session): CmdButton[] {
   const g = s.game;
   const p = g.players[s.local];
   const sel = s.selectedEntities().filter((e) => e.owner === s.local);
-  if (!sel.length || p.defeated) return [];
+  if (!sel.length || p.defeated || s.spectator) return [];
   const color = p.color.hex;
   const units = sel.filter((e): e is Unit => e.kind === 'unit');
   const blds = sel.filter((e): e is Building => e.kind === 'building');

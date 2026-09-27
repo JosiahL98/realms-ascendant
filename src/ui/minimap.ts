@@ -110,7 +110,7 @@ export class Minimap {
 
   private renderFog(): void {
     const g = this.s.game;
-    const team = g.teamOf[this.s.local];
+    const team = this.s.viewTeam();
     const vis = g.vision.visible.get(team), exp = g.vision.explored.get(team);
     const d = this.fogData.data;
     const n = g.map.n;
@@ -119,6 +119,12 @@ export class Minimap {
       d[i * 4 + 3] = !exp ? 0 : !exp[i] ? 255 : vis && vis[i] ? 0 : 120;
     }
     this.fog.getContext('2d')!.putImageData(this.fogData, 0, 0);
+  }
+
+  /** Redraw the fog and markers now (the view changed). */
+  refresh(): void {
+    this.lastFogVersion = -1;
+    this.lastDraw = 0;
   }
 
   update(now: number): void {
@@ -143,7 +149,7 @@ export class Minimap {
     ctx.setTransform(this.sx, this.sy, -this.sx, this.sy, W / 2, this.pad);
     ctx.drawImage(this.terrain, 0, 0);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
-    const team = g.teamOf[s.local];
+    const team = s.viewTeam();
     const vis = g.vision.visible.get(team), exp = g.vision.explored.get(team);
     const n = g.map.n;
     const expAt = (x: number, z: number) => !exp || exp[Math.floor(z) * n + Math.floor(x)] === 1;
@@ -161,7 +167,7 @@ export class Minimap {
     const bit = 1 << (team & 15);
     for (const b of g.buildings) {
       if (!b.alive) continue;
-      if (g.teamOf[b.owner] !== team && !(b.seenBy & bit)) continue;
+      if (team >= 0 && g.teamOf[b.owner] !== team && !(b.seenBy & bit)) continue;
       const pts = [this.toMini(b.tx, b.tz), this.toMini(b.tx + b.w, b.tz), this.toMini(b.tx + b.w, b.tz + b.h), this.toMini(b.tx, b.tz + b.h)];
       ctx.fillStyle = g.players[b.owner].color.css;
       ctx.strokeStyle = '#000';

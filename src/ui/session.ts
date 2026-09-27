@@ -28,6 +28,10 @@ export class Session {
   minimap: Minimap;
   audio: AudioSys;
   local: number;
+  /** Watching a match of computer players: nothing can be commanded. */
+  spectator: boolean;
+  /** Spectating with everything visible, rather than through one player's eyes. */
+  viewAll = false;
   selection: number[] = [];
   panelMode: 'main' | 'buildEco' | 'buildMil' = 'main';
   placing: { type: string; rotated: boolean } | null = null;
@@ -55,7 +59,9 @@ export class Session {
     this.onExit = onExit;
     this.audio = audio;
     this.game = new Game(setup);
-    this.local = setup.players.findIndex((p) => p.human) + 1 || 1;
+    this.spectator = !!setup.spectator;
+    this.local = this.spectator ? 1 : setup.players.findIndex((p) => p.human) + 1 || 1;
+    this.viewAll = this.spectator;
     root.innerHTML = `<canvas id="view"></canvas><div id="vignette"></div><canvas id="overlay"></canvas><div id="hud"></div>`;
     this.canvas = root.querySelector('#view') as HTMLCanvasElement;
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
@@ -70,13 +76,20 @@ export class Session {
       if (ai) this.ais.push({ pid: p.id, ai });
     }
     const tc = this.game.buildings.find((b) => b.owner === this.local && b.type === 'townCenter');
-    if (tc) this.renderer.centerOn(tc.x + 1, tc.z + 1);
+    if (this.spectator) {
+      this.renderer.setViewTeam(-1);
+      this.renderer.centerOn(this.game.map.n / 2, this.game.map.n / 2);
+    } else if (tc) this.renderer.centerOn(tc.x + 1, tc.z + 1);
     this.resize();
     window.addEventListener('resize', this.resize);
     (window as unknown as Record<string, unknown>).__session = this;
     (window as unknown as Record<string, unknown>).__game = this.game;
-    this.hud.message(`Welcome, ${this.game.players[this.local].name} of ${this.game.players[this.local].civ.realm.replace(/^The /, "the ")}.`, "good");
-    this.hud.message('Gather resources, advance through the ages and conquer your rivals.', 'info');
+    if (this.spectator) {
+      this.hud.message('You are watching the computer players. Choose whose eyes to see through at the top of the screen.', 'good');
+    } else {
+      this.hud.message(`Welcome, ${this.game.players[this.local].name} of ${this.game.players[this.local].civ.realm.replace(/^The /, "the ")}.`, "good");
+      this.hud.message('Gather resources, advance through the ages and conquer your rivals.', 'info');
+    }
     this.audio.startMusic();
   }
 
@@ -187,6 +200,7 @@ export class Session {
   /* ------------------------------------------------------------------ */
 
   issue(cmd: Command): CmdResult {
+    if (this.spectator) return { ok: false };
     const r = issueCommand(this.game, this.local, cmd);
     if (!r.ok && r.err && r.err !== 'no units') {
       this.hud.message(r.err, 'err');
@@ -273,8 +287,29 @@ export class Session {
   /* Events -> effects, sounds, messages                                  */
   /* ------------------------------------------------------------------ */
 
+  /** The team whose view is shown (-1: everything, when spectating). */
+  viewTeam(): number {
+    return this.viewAll ? -1 : this.game.teamOf[this.local];
+  }
+
+  /** Spectating: see through one player's eyes (0 = everyone). */
+  setView(pid: number): void {
+    if (!this.spectator) return;
+    this.viewAll = pid === 0;
+    if (pid) this.local = pid;
+    this.renderer.setViewTeam(this.viewTeam());
+    this.minimap.refresh();
+    this.hud.refreshView();
+  }
+
+  /** Whether an event concerns the player being played (or watched). */
+  private mine(owner: number): boolean {
+    return !this.viewAll && owner === this.local;
+  }
+
   private visibleToMe(x: number, z: number): boolean {
-    return this.game.vision.isVisible(this.game.teamOf[this.local], x, z);
+    const team = this.viewTeam();
+    return team < 0 || this.game.vision.isVisible(team, x, z);
   }
 
   private processEvents(): void {
@@ -294,39 +329,39 @@ export class Session {
         }
         case 'bdestroy': {
           r.buildings.addRubble(g, ev.x, ev.z, ev.w, ev.h);
-          if (this.visibleToMe(ev.x, ev.z) || ev.owner === this.local) {
+          if (this.visibleToMe(ev.x, ev.z) || this.mine(ev.owner)) {
             const y = g.map.heightAt(ev.x, ev.z);
             fx.dust(ev.x, y + 0.5, ev.z, 20 + ev.w * 6, true);
             fx.smoke(ev.x, y + 0.5, ev.z, 10, true);
             this.audio.at('collapse', ev.x, ev.z);
           }
-          if (ev.owner === this.local && BUILDINGS[ev.type] && !BUILDINGS[ev.type].wall && ev.type !== 'farm') this.hud.message(`Your ${BUILDINGS[ev.type].name} was destroyed!`, 'alert');
+          if (this.mine(ev.owner) && BUILDINGS[ev.type] && !BUILDINGS[ev.type].wall && ev.type !== 'farm') this.hud.message(`Your ${BUILDINGS[ev.type].name} was destroyed!`, 'alert');
           break;
         }
         case 'bcomplete':
-          if (ev.owner === this.local) {
+          if (this.mine(ev.owner)) {
             this.audio.play('built');
             const b = g.building(ev.id);
             if (b) fx.dust(b.x, b.baseY + 0.2, b.z, 12, true);
           }
           break;
         case 'trained':
-          if (ev.owner === this.local) this.audio.play('trained');
+          if (this.mine(ev.owner)) this.audio.play('trained');
           break;
         case 'research':
-          if (ev.owner === this.local && !TECHS[ev.tech]?.isAge) {
+          if (this.mine(ev.owner) && !TECHS[ev.tech]?.isAge) {
             this.hud.message(`${TECHS[ev.tech]?.name ?? ev.tech} researched.`, 'good');
             this.audio.play('research');
           }
           break;
         case 'age': {
           const p = g.players[ev.owner];
-          this.hud.message(`${p.name} has advanced to the ${AGE_NAMES[ev.age]}.`, ev.owner === this.local ? 'good' : 'info');
-          this.audio.play(ev.owner === this.local ? 'ageUp' : 'ageUpOther');
+          this.hud.message(`${p.name} has advanced to the ${AGE_NAMES[ev.age]}.`, this.mine(ev.owner) ? 'good' : 'info');
+          this.audio.play(this.mine(ev.owner) ? 'ageUp' : 'ageUpOther');
           break;
         }
         case 'attacked':
-          if (ev.owner === this.local) {
+          if (this.mine(ev.owner)) {
             this.lastAlert = { x: ev.x, z: ev.z, t: g.time };
             this.hud.message(ev.what === 'villager' ? 'Your villagers are under attack! (Space to view)' : ev.what === 'building' ? 'Your town is under attack! (Space to view)' : 'Your army is under attack! (Space to view)', 'alert');
             this.audio.play('alarm');
@@ -358,27 +393,27 @@ export class Session {
           break;
         case 'convert':
           if (this.visibleToMe(ev.x, ev.z)) fx.glow(ev.x, g.map.heightAt(ev.x, ev.z) + 0.5, ev.z, 16);
-          if (ev.from === this.local) this.hud.message('One of your units has been converted!', 'alert');
-          if (ev.to === this.local) this.audio.play('convert');
+          if (this.mine(ev.from)) this.hud.message('One of your units has been converted!', 'alert');
+          if (this.mine(ev.to)) this.audio.play('convert');
           break;
         case 'defeated':
-          this.hud.message(`${g.players[ev.owner].name} has been defeated.`, ev.owner === this.local ? 'alert' : 'good');
+          this.hud.message(`${g.players[ev.owner].name} has been defeated.`, this.mine(ev.owner) ? 'alert' : 'good');
           break;
         case 'gameover':
           this.ended = true;
           setTimeout(() => this.hud.showGameOver(), 1500);
           break;
         case 'msg':
-          if (ev.owner === this.local) this.hud.message(ev.text, ev.kind === 'error' ? 'err' : 'info');
+          if (this.mine(ev.owner)) this.hud.message(ev.text, ev.kind === 'error' ? 'err' : 'info');
           break;
         case 'placed':
-          if (ev.owner === this.local) this.audio.play('place');
+          if (this.mine(ev.owner)) this.audio.play('place');
           break;
         case 'fell':
           r.props.markDirty();
           break;
         case 'relics': {
-          const mine = ev.team === g.teamOf[this.local];
+          const mine = !this.viewAll && ev.team === g.teamOf[this.local];
           const names = g.players.filter((p) => !p.isGaia && p.team === ev.team).map((p) => p.name).join(' & ');
           if (ev.state === 'held') this.hud.message(mine ? 'You control every relic! Hold them for 600 seconds to win.' : `${names} control every relic! Victory in 600 seconds unless you take one.`, mine ? 'good' : 'alert');
           else this.hud.message(mine ? 'You no longer hold every relic.' : `${names} no longer hold every relic.`, 'info');
@@ -403,10 +438,11 @@ export class Session {
     this.fxTimer = 0;
     const g = this.game;
     const r = this.renderer;
-    const bit = 1 << (g.teamOf[this.local] & 15);
+    const team = this.viewTeam();
+    const bit = 1 << (team & 15);
     for (const b of g.buildings) {
       if (!b.alive || !b.built) continue;
-      if (g.teamOf[b.owner] !== g.teamOf[this.local] && !(b.seenBy & bit)) continue;
+      if (team >= 0 && g.teamOf[b.owner] !== team && !(b.seenBy & bit)) continue;
       if (!r.inView(b.x, b.z, 3)) continue;
       const frac = b.hp / b.stats.hp;
       const h = buildingModel(b.type, g.players[b.owner].civ.style).height;

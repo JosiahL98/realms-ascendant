@@ -25,6 +25,7 @@ export class Hud {
   private tipEl: HTMLElement;
   private idleEl: HTMLElement;
   private scoresEl: HTMLElement;
+  private specEl: HTMLElement | null = null;
   selBox: HTMLElement;
   private lastUpdate = 0;
   private cmdSig = '';
@@ -44,12 +45,14 @@ export class Hud {
         <div class="res" id="res-pop" data-tip="pop"><img src="${resIcon('pop')}"><span class="val">0/0</span></div>
         <div id="age-box"><span id="age-name">Dark Age</span> <span class="civ">— ${p.civ.name}</span><div id="age-prog"><div></div></div></div>
         <span id="clock">00:00:00</span>
+        ${s.spectator ? `<label id="viewpick">Watching <select id="viewsel"><option value="0">Everyone</option>${s.game.players.filter((q) => !q.isGaia).map((q) => `<option value="${q.id}">${escapeHtml(q.name)} (${q.civ.name})</option>`).join('')}</select></label>` : ''}
         <button class="topbtn" id="btn-civ">Civilization</button>
         <button class="topbtn" id="btn-help">Help</button>
         <button class="topbtn" id="btn-menu">Menu</button>
       </div>
       <div id="messages"></div>
       <div id="scores"></div>
+      ${s.spectator ? '<div id="specboard" class="wood"></div>' : ''}
       <div id="bottom" class="wood">
         <div id="cmd"></div>
         <div id="info"></div>
@@ -76,6 +79,14 @@ export class Hud {
     this.minimapCanvas = root.querySelector('#minimap') as HTMLCanvasElement;
     this.idleEl.style.backgroundImage = `url(${unitIcon('villager', p.color.hex)})`;
     this.idleEl.addEventListener('click', () => this.s.input.selectIdleVillager());
+    this.specEl = root.querySelector('#specboard');
+    const viewSel = root.querySelector('#viewsel') as HTMLSelectElement | null;
+    if (viewSel) {
+      viewSel.addEventListener('change', () => this.s.setView(Number(viewSel.value)));
+      // the game's hotkeys should not fire while choosing
+      viewSel.addEventListener('keydown', (e) => e.stopPropagation());
+    }
+    if (s.spectator) this.refreshView();
     (root.querySelector('#btn-menu') as HTMLElement).addEventListener('click', () => this.showMenu());
     (root.querySelector('#btn-help') as HTMLElement).addEventListener('click', () => this.showHelp());
     (root.querySelector('#btn-civ') as HTMLElement).addEventListener('click', () => this.showCivInfo());
@@ -143,8 +154,46 @@ export class Hud {
     (this.idleEl.firstElementChild as HTMLElement).textContent = idle ? String(idle) : '';
     this.idleEl.classList.toggle('none', idle === 0);
     this.updateScores();
+    this.updateSpectator();
     this.updateCommands();
     this.updateInfo();
+  }
+
+  /** Spectating: the top bar shows the watched player's resources, or nothing when watching everyone. */
+  refreshView(): void {
+    const s = this.s;
+    const p = s.game.players[s.local];
+    this.root.querySelectorAll('#topbar .res, #age-box').forEach((el) => { (el as HTMLElement).style.display = s.viewAll ? 'none' : ''; });
+    const civ = this.root.querySelector('#age-box .civ') as HTMLElement | null;
+    if (civ) civ.textContent = `— ${p.civ.name}`;
+    this.idleEl.style.backgroundImage = `url(${unitIcon('villager', p.color.hex)})`;
+    this.idleEl.style.display = s.spectator ? 'none' : '';
+    const pick = this.root.querySelector('#viewsel') as HTMLSelectElement | null;
+    if (pick) pick.value = String(s.viewAll ? 0 : s.local);
+    this.infoSig = '';
+    this.lastUpdate = 0;
+  }
+
+  /** Spectating: every player's standing at a glance. */
+  private updateSpectator(): void {
+    if (!this.specEl) return;
+    const g = this.s.game;
+    const rows = g.players.filter((p) => !p.isGaia).map((p) => {
+      let vills = 0, mil = 0;
+      for (const u of g.units) {
+        if (!u.alive || u.owner !== p.id) continue;
+        if (u.def.gatherer) vills++;
+        else if (!u.def.animal) mil++;
+      }
+      const r = p.res;
+      const watched = !this.s.viewAll && p.id === this.s.local;
+      return `<tr class="${p.defeated ? 'dead' : ''}${watched ? ' watched' : ''}" data-pid="${p.id}"><td><span class="sw" style="background:${p.color.css}"></span>${escapeHtml(p.name)}</td>
+        <td>${AGE_NAMES[p.age].split(' ')[0]}</td><td>${p.pop}/${p.popCap}</td><td>${vills}</td><td>${mil}</td>
+        <td>${Math.floor(r.food)}</td><td>${Math.floor(r.wood)}</td><td>${Math.floor(r.gold)}</td><td>${Math.floor(r.stone)}</td>
+        <td>${p.stats.unitsKilled}</td><td>${Math.floor(scoreOf(this.s, p.id))}</td></tr>`;
+    }).join('');
+    const html = `<table><tr><th>Player</th><th>Age</th><th>Pop</th><th>Vill</th><th>Army</th><th>Food</th><th>Wood</th><th>Gold</th><th>Stone</th><th>Kills</th><th>Score</th></tr>${rows}</table>`;
+    if (this.specEl.innerHTML !== html) this.specEl.innerHTML = html;
   }
 
   private updateScores(): void {
@@ -278,6 +327,17 @@ export class Hud {
     const s = this.s;
     const sel = s.selectedEntities();
     const g = s.game;
+    if (!sel.length && s.viewAll) {
+      // spectating everyone: who is in the match
+      const players = g.players.filter((q) => !q.isGaia);
+      const sig = 'match:' + players.map((q) => q.id + (q.defeated ? 'x' : '')).join(',');
+      if (sig !== this.infoSig) {
+        this.infoSig = sig;
+        this.infoEl.innerHTML = `<div class="col"><div class="name">Spectating</div><div class="sub">${players.length} computer players · click a unit or building to inspect it</div>
+          <div class="flavor">${players.map((q) => `<span style="color:${q.color.css};${q.defeated ? 'text-decoration:line-through' : ''}">${escapeHtml(q.name)}</span> — ${q.civ.realm} (${q.civ.name}, ${q.civ.specialty})`).join('<br>')}</div></div>`;
+      }
+      return;
+    }
     if (!sel.length) {
       const p = g.players[s.local];
       const sig = 'none:' + p.civ.id;
@@ -528,17 +588,20 @@ export class Hud {
     const s = this.s;
     const g = s.game;
     const won = g.winnerTeam === g.teamOf[s.local];
+    const winners = g.players.filter((p) => !p.isGaia && p.team === g.winnerTeam).map((p) => escapeHtml(p.name)).join(' and ');
     const rows = g.players.filter((p) => !p.isGaia).map((p) => `<tr><td style="color:${p.color.css}">${escapeHtml(p.name)} (${p.civ.name})</td>
       <td>${Math.floor(scoreOf(s, p.id))}</td><td>${p.stats.unitsKilled}</td><td>${p.stats.unitsLost}</td><td>${p.stats.buildingsRazed}</td>
       <td>${Math.floor(p.stats.gathered.food + p.stats.gathered.wood + p.stats.gathered.gold + p.stats.gathered.stone)}</td><td>${p.stats.techs}</td>
       <td>${p.stats.feudalTime >= 0 ? formatTime(p.stats.feudalTime) : '—'}</td><td>${p.stats.castleTime >= 0 ? formatTime(p.stats.castleTime) : '—'}</td><td>${p.stats.imperialTime >= 0 ? formatTime(p.stats.imperialTime) : '—'}</td></tr>`).join('');
-    const m = this.openModal(`<h2>${won ? 'Victory!' : 'Defeat'}</h2>
-      <p style="text-align:center;font-size:18px">${won ? 'Your realm is ascendant. The chroniclers will sing of this day.' : 'Your realm has fallen. Others will write its history.'}</p>
+    const title = s.spectator ? (winners ? `${winners} ${winners.includes(' and ') ? 'win' : 'wins'}` : 'The match is over') : won ? 'Victory!' : 'Defeat';
+    const line = s.spectator ? 'The chroniclers have seen enough.' : won ? 'Your realm is ascendant. The chroniclers will sing of this day.' : 'Your realm has fallen. Others will write its history.';
+    const m = this.openModal(`<h2>${title}</h2>
+      <p style="text-align:center;font-size:18px">${line}</p>
       <table class="stats-table"><tr><th>Player</th><th>Score</th><th>Kills</th><th>Losses</th><th>Razed</th><th>Gathered</th><th>Techs</th><th>Feudal</th><th>Castle</th><th>Imperial</th></tr>${rows}</table>
       <p style="text-align:center">Game time: ${formatTime(g.time)}</p>
       <button class="mbtn" data-a="watch">Keep watching</button>
       <button class="mbtn" data-a="quit">Return to main menu</button>`);
-    s.audio.play(won ? 'victory' : 'defeat');
+    s.audio.play(won || s.spectator ? 'victory' : 'defeat');
     (m.querySelector('[data-a=quit]') as HTMLElement).addEventListener('click', () => {
       this.closeModal();
       s.exit();

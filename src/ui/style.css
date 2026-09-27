@@ -135,6 +135,18 @@ button { font-family: inherit; }
 #idlebtn.none { filter: grayscale(1) brightness(0.5); }
 #scores { position: absolute; right: 8px; bottom: calc(var(--panel-h) + 10px); font-size: 14px; text-align: right; text-shadow: 0 0 3px #000, 1px 1px 0 #000; z-index: 4; pointer-events: none !important; }
 #scores .dead { text-decoration: line-through; opacity: 0.6; }
+body:has(#specboard) #scores { display: none; }
+#viewpick { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; font-family: 'Cinzel', serif; font-size: 14px; color: #f2d98c; }
+#viewpick select { font: inherit; font-size: 14px; }
+#specboard { position: absolute; right: 8px; top: 44px; z-index: 4; padding: 6px 8px; border-radius: 4px; max-width: calc(100vw - 16px); overflow-x: auto;
+  font-size: 13px; color: #f2e6c8; pointer-events: none !important; }
+#specboard table { border-collapse: collapse; }
+#specboard th { font-family: 'Cinzel', serif; font-weight: 700; font-size: 11px; color: #f2d98c; text-align: right; padding: 0 6px; }
+#specboard th:first-child, #specboard td:first-child { text-align: left; }
+#specboard td { text-align: right; padding: 1px 6px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#specboard .sw { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 5px; border: 1px solid #000; vertical-align: -1px; }
+#specboard tr.dead { text-decoration: line-through; opacity: 0.55; }
+#specboard tr.watched td { background: rgba(242, 217, 140, 0.16); }
 
 /* ----------------------------------------------------------- tooltip */
 #tooltip { position: absolute; display: none; max-width: 380px; padding: 8px 10px; z-index: 50; pointer-events: none !important;

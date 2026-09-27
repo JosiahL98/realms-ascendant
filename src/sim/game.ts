@@ -36,6 +36,8 @@ export interface GameSetup {
   reveal: 'normal' | 'explored' | 'all';
   victory: 'standard' | 'conquest';
   startAge: AgeIndex;
+  /** Every player is a computer; the viewer only watches. */
+  spectator?: boolean;
 }
 
 export type GameEvent =

@@ -20,6 +20,8 @@ interface SetupState {
   victory: 'standard' | 'conquest';
   reveal: 'normal' | 'explored' | 'all';
   startAge?: number;
+  /** Watch computer players instead of playing. */
+  spectate?: boolean;
 }
 
 export class Menus {
@@ -82,6 +84,7 @@ export class Menus {
       <div class="menu-buttons">
         <button class="mbtn" data-a="play">Single Player</button>
         <button class="mbtn" data-a="quick">Quick Battle</button>
+        <button class="mbtn" data-a="watch">Watch a Match</button>
         <button class="mbtn" data-a="civs">The Eight Realms</button>
         <button class="mbtn" data-a="help">How to Play</button>
       </div>
@@ -91,7 +94,11 @@ export class Menus {
       this.audio.unlock();
       this.audio.play('click');
       const a = (b as HTMLElement).dataset.a;
-      if (a === 'play') this.showSetup();
+      if (a === 'play' || a === 'watch') {
+        this.state.spectate = a === 'watch';
+        this.saveState();
+        this.showSetup();
+      }
       else if (a === 'quick') this.start(true);
       else if (a === 'civs') this.showCivs();
       else if (a === 'help') this.showHelp();
@@ -138,11 +145,11 @@ export class Menus {
       <td><input data-f="name" value="${p.name.replace(/"/g, '&quot;')}" size="14"></td>
       <td><select data-f="civ">${civOpts(p.civ, p.random)}</select></td>
       <td><select data-f="team">${[1, 2, 3, 4].map((t) => `<option value="${t}" ${t === p.team ? 'selected' : ''}>Team ${t}</option>`).join('')}</select></td>
-      <td>${p.human ? '<i>Human</i>' : `<select data-f="difficulty">${(['easy', 'standard', 'hard', 'hardest'] as Difficulty[]).map((d) => `<option value="${d}" ${d === p.difficulty ? 'selected' : ''}>${d[0].toUpperCase() + d.slice(1)}</option>`).join('')}</select>`}</td>
+      <td>${p.human && !s.spectate ? '<i>Human</i>' : `<select data-f="difficulty">${(['easy', 'standard', 'hard', 'hardest'] as Difficulty[]).map((d) => `<option value="${d}" ${d === p.difficulty ? 'selected' : ''}>${d[0].toUpperCase() + d.slice(1)}</option>`).join('')}</select>`}</td>
       <td>${p.human ? '' : `<button class="mbtn small" data-f="remove">✕</button>`}</td></tr>`).join('');
     const human = s.players.find((p) => p.human)!;
     const hc = CIVS[human.civ] ?? CIVS.carthaginians;
-    const el = this.frame(`<h2 style="font-family:Cinzel;color:#f2d98c;text-align:center;font-size:32px">Standard Game</h2>
+    const el = this.frame(`<h2 style="font-family:Cinzel;color:#f2d98c;text-align:center;font-size:32px">${s.spectate ? 'Watch a Match' : 'Standard Game'}</h2>
       <div class="setup">
         <div class="box wood trim"><h3>Players</h3><table>${rows}</table>
           <button class="mbtn small" data-a="add" ${s.players.length >= 8 ? 'disabled' : ''}>+ Add computer player</button>
@@ -151,6 +158,7 @@ export class Menus {
             <ul>${hc.bonuses.filter((b) => b.text).map((b) => `<li>${b.text}</li>`).join('')}</ul><div style="font-size:14px">Unique unit: <b>${UNITS[hc.uniqueUnit].name}</b></div>`}</div></div>
         </div>
         <div class="box wood trim"><h3>Game Settings</h3>
+          <div class="row">Mode <select data-g="spectate"><option value="play" ${!s.spectate ? 'selected' : ''}>Play</option><option value="watch" ${s.spectate ? 'selected' : ''}>Spectate (every player is a computer)</option></select></div>
           <div class="row">Map <select data-g="mapType">${MAP_TYPES.map((m) => `<option value="${m.id}" ${m.id === s.mapType ? 'selected' : ''}>${m.name}</option>`).join('')}</select></div>
           <div style="font-size:13px;color:#c9b68e;margin:-2px 0 6px">${MAP_TYPES.find((m) => m.id === s.mapType)?.description ?? ''}</div>
           <div class="row">Map size <select data-g="mapSize">${MAP_SIZES.map((m) => `<option value="${m.size}" ${m.size === s.mapSize ? 'selected' : ''}>${m.name}</option>`).join('')}</select></div>
@@ -191,7 +199,7 @@ export class Menus {
     el.querySelectorAll('[data-g]').forEach((f) => f.addEventListener('change', () => {
       const k = (f as HTMLElement).dataset.g as keyof SetupState;
       const v = (f as HTMLSelectElement).value;
-      (s as unknown as Record<string, unknown>)[k] = k === 'mapSize' || k === 'popLimit' || k === 'startAge' ? Number(v) : v;
+      (s as unknown as Record<string, unknown>)[k] = k === 'spectate' ? v === 'watch' : k === 'mapSize' || k === 'popLimit' || k === 'startAge' ? Number(v) : v;
       this.saveState();
       this.showSetup();
     }));
@@ -227,7 +235,7 @@ export class Menus {
         alert('At least two teams are needed.');
         return;
       }
-      players = s.players.map((p) => ({ ...p, civ: p.random ? CIV_LIST[Math.floor(Math.random() * CIV_LIST.length)].id : p.civ }));
+      players = s.players.map((p) => ({ ...p, human: p.human && !s.spectate, civ: p.random ? CIV_LIST[Math.floor(Math.random() * CIV_LIST.length)].id : p.civ }));
     }
     const setup: GameSetup = {
       seed: Math.floor(Math.random() * 1e9),
@@ -239,6 +247,7 @@ export class Menus {
       reveal: quick ? 'normal' : s.reveal,
       victory: quick ? 'standard' : s.victory,
       startAge: (quick ? 0 : s.startAge ?? 0) as GameSetup['startAge'],
+      spectator: !quick && !!s.spectate,
     };
     this.onStart(setup);
   }

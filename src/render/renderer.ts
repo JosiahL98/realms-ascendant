@@ -275,7 +275,7 @@ export class Renderer {
     const bit = 1 << (this.localTeam & 15);
     for (const b of g.buildings) {
       if (!b.alive) continue;
-      if (g.teamOf[b.owner] !== this.localTeam && !(b.seenBy & bit)) continue;
+      if (this.localTeam >= 0 && g.teamOf[b.owner] !== this.localTeam && !(b.seenBy & bit)) continue;
       const hgt = b.built ? buildingModel(b.type, g.players[b.owner].civ.style).height * 0.8 : 0.4;
       test(b, b.tx + 0.05, b.baseY - 0.2, b.tz + 0.05, b.tx + b.w - 0.05, b.baseY + hgt, b.tz + b.h - 0.05);
     }
@@ -351,6 +351,12 @@ export class Renderer {
   /* ------------------------------------------------------------------ */
   /* Per-frame                                                            */
   /* ------------------------------------------------------------------ */
+
+  /** Whose eyes the world is drawn through: a team, or -1 to see everything (spectating). */
+  setViewTeam(team: number): void {
+    this.localTeam = team;
+    this.fogVersion = -1;
+  }
 
   private updateFog(): void {
     const v = this.game.vision;
