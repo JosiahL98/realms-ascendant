@@ -229,12 +229,20 @@ for side, x in (('L', LEG_X), ('R', -LEG_X)):
 
 
 def leg_weight(p, front, s):
-    """How much a body vertex follows the upper leg on side s (+1 left, -1 right): 1 below the belly, 0 inside it."""
-    lateral = ss(0.02, 0.075, s * p[0])
-    if front:
-        return ss(0.6, 0.46, p[1]) * lateral * ss(0.16, 0.24, p[2]) * ss(0.52, 0.44, p[2])
-    # the thigh swings further than the forearm, so its blend runs over a taller band to avoid pinching the flank
-    return ss(0.7, 0.42, p[1]) * lateral * ss(-0.56, -0.46, p[2]) * ss(-0.08, -0.2, p[2])
+    """
+    How much a body vertex follows the upper leg on side s (+1 left, -1 right). Nothing above the joint moves (those
+    points would swing the opposite way and bulge out of the body); just below it only points close to the leg's own
+    axis follow, so the hanging belly and hindquarter stay put; below the belly everything is leg.
+    """
+    pivot_y, pivot_z = 0.52, FRONT_Z if front else HIND_Z
+    lower_y, lower_z = (0.3, 0.345) if front else (0.315, -0.395)
+    k = (pivot_y - p[1]) / (pivot_y - lower_y)
+    axis_z = pivot_z + (lower_z - pivot_z) * k
+    r = math.hypot(p[0] - s * LEG_X, p[2] - axis_z)
+    radial = ss(0.085, 0.06, r) if front else ss(0.1, 0.075, r)
+    band = ss(0.535, 0.465, p[1]) * radial
+    below = ss(0.47, 0.42, p[1]) * ss(0.03, 0.06, s * p[0]) * ss(0.16, 0.12, abs(p[2] - axis_z))
+    return max(band, below)
 
 
 def leg_points(p):
