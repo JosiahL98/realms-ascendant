@@ -1,0 +1,809 @@
+<title>Realms Ascendant Model Review</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #efe4c8;
+    --surface: #f8f0dc;
+    --ink: #2a1a0a;
+    --muted: #6b5434;
+    --line: #cdb88c;
+    --accent: #7a5a1c;
+    --accent-ink: #fbf3df;
+    --pill-bg: #e8cf86;
+    --pill-ink: #3b2a1a;
+    --focus: #a8781f;
+    --stance: #7a5a1c;
+    --stance-lead: #a8401e;
+    --track: #e6d6b0;
+    --stage: #1d140b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #150d06;
+      --surface: #22170c;
+      --ink: #eadfc4;
+      --muted: #b6a27c;
+      --line: #4a3620;
+      --accent: #d8b25a;
+      --accent-ink: #1a1007;
+      --pill-bg: #3b2a1a;
+      --pill-ink: #f2d98c;
+      --focus: #f2d98c;
+      --stance: #d8b25a;
+      --stance-lead: #e8784a;
+      --track: #2e2012;
+      --stage: #0c0703;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #150d06;
+    --surface: #22170c;
+    --ink: #eadfc4;
+    --muted: #b6a27c;
+    --line: #4a3620;
+    --accent: #d8b25a;
+    --accent-ink: #1a1007;
+    --pill-bg: #3b2a1a;
+    --pill-ink: #f2d98c;
+    --focus: #f2d98c;
+    --stance: #d8b25a;
+    --stance-lead: #e8784a;
+    --track: #2e2012;
+    --stage: #0c0703;
+  }
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: 'EB Garamond', Georgia, 'Times New Roman', serif;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 24px; }
+  header { display: grid; gap: 10px; }
+  .status {
+    justify-self: start; font-family: 'Cinzel', Georgia, serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; background: var(--pill-bg); color: var(--pill-ink); padding: 4px 10px; border-radius: 999px;
+  }
+  h1 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0; letter-spacing: 0.02em; text-wrap: balance; }
+  h2 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; margin: 0; letter-spacing: 0.03em; text-wrap: balance; }
+  .lede { margin: 0; max-width: 68ch; }
+  .stage {
+    position: relative; background: var(--stage); border: 1px solid var(--accent); border-radius: 6px; overflow: hidden;
+    aspect-ratio: 16 / 9; max-width: 100%;
+  }
+  @media (max-width: 640px) { .stage { aspect-ratio: 4 / 3; } }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .stage canvas:active { cursor: grabbing; }
+  .tag {
+    position: absolute; transform: translate(-50%, 14px); font-family: 'Cinzel', Georgia, serif; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.08em; color: #f2d98c; background: rgba(21, 13, 6, 0.78); padding: 3px 9px; border-radius: 3px;
+    pointer-events: none; white-space: nowrap;
+  }
+  .hint { position: absolute; left: 12px; bottom: 8px; font-size: 15px; color: rgba(234, 223, 196, 0.85); pointer-events: none; }
+  .gait { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: 18px 28px; align-items: start; }
+  @media (max-width: 760px) { .gait { grid-template-columns: 1fr; } }
+  .gait-text { display: grid; gap: 6px; }
+  .gait-text h2 { font-size: 22px; }
+  .gait-text p { margin: 0; }
+  .gait-text .speed { color: var(--muted); font-variant-numeric: lining-nums; }
+  .footfalls { display: grid; gap: 6px; }
+  .ff-row { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 10px; align-items: center; }
+  .ff-row .who { color: var(--muted); font-size: 16px; }
+  .ff-track { position: relative; height: 16px; background: var(--track); border-radius: 3px; overflow: hidden; }
+  .ff-bar { position: absolute; top: 0; bottom: 0; background: var(--stance); border-radius: 2px; }
+  .ff-bar.lead { background: var(--stance-lead); }
+  .ff-scale { display: grid; grid-template-columns: 7.5em minmax(0, 1fr); gap: 10px; font-size: 14px; color: var(--muted); }
+  .ff-scale div:last-child { display: flex; justify-content: space-between; }
+  .ff-plot { position: relative; display: grid; gap: 6px; }
+  .playhead { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--ink); pointer-events: none; }
+  .ff-legend { font-size: 15px; color: var(--muted); }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+  .group { display: grid; gap: 6px; }
+  .group > .glabel { font-family: 'Cinzel', Georgia, serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--surface); }
+  .seg button {
+    font: inherit; font-size: 16px; background: transparent; color: var(--ink); border: 0; border-right: 1px solid var(--line);
+    padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .scrub { display: flex; align-items: center; gap: 10px; }
+  .scrub input { width: min(260px, 60vw); accent-color: var(--accent); }
+  .scrub output { font-variant-numeric: tabular-nums; min-width: 3.5em; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.35); flex: none; }
+  .compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 20px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 10px; }
+  .card h2 { font-size: 19px; }
+  .stats { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+  .stats dt { color: var(--muted); }
+  .stats dd { margin: 0; font-variant-numeric: lining-nums tabular-nums; }
+  section.notes { display: grid; gap: 10px; }
+  section.notes h2, section.answer h2 { font-size: 21px; }
+  section.notes ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 74ch; }
+  section.answer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 22px; }
+  section.answer p { margin: 0; max-width: 70ch; }
+  kbd { font-family: inherit; font-weight: 600; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; }
+  .err { color: #f2d98c; position: absolute; inset: 0; display: grid; place-items: center; text-align: center; padding: 20px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="status">Awaiting your approval · version 2</span>
+    <h1>The Horse</h1>
+    <p class="lede">The Blender horse, rebuilt with far more anatomy and with legs that bend at the knee, hock and fetlock. It walks, trots and canters with the real order of footfalls, and a hoof on the ground stays put while the body moves over it. The ground here scrolls at the horse's speed so you can check. The horse your cavalry rides today stands alongside for comparison. Nothing has been put into the game yet.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="3D view of the current horse and the new horse moving over scrolling ground"></canvas>
+    <div class="tag" id="tag-old">In the game now</div>
+    <div class="tag" id="tag-new">New, version 2</div>
+    <div class="hint" id="hint">Drag to turn · scroll or pinch to zoom</div>
+  </div>
+
+  <div class="gait">
+    <div class="gait-text">
+      <h2 id="gait-name">Canter</h2>
+      <p id="gait-caption"></p>
+      <p class="speed" id="gait-speed"></p>
+    </div>
+    <div class="footfalls" id="footfalls" aria-label="Which hooves are on the ground over one stride">
+      <div class="ff-plot" id="ff-plot">
+        <div class="ff-row"><span class="who">Left fore</span><div class="ff-track" data-leg="FL"></div></div>
+        <div class="ff-row"><span class="who">Right fore</span><div class="ff-track" data-leg="FR"></div></div>
+        <div class="ff-row"><span class="who">Left hind</span><div class="ff-track" data-leg="BL"></div></div>
+        <div class="ff-row"><span class="who">Right hind</span><div class="ff-track" data-leg="BR"></div></div>
+        <div class="playhead" id="playhead"></div>
+      </div>
+      <div class="ff-scale"><span></span><div><span>Stride start</span><span>Stride end</span></div></div>
+      <div class="ff-legend" id="ff-legend">Bars show when each hoof is on the ground.</div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="group">
+      <span class="glabel" id="lbl-gait">Gait</span>
+      <div class="seg" role="group" aria-labelledby="lbl-gait">
+        <button type="button" id="gait-stand" data-gait="stand">Stand</button>
+        <button type="button" id="gait-walk" data-gait="walk">Walk</button>
+        <button type="button" id="gait-trot" data-gait="trot">Trot</button>
+        <button type="button" id="gait-canter" data-gait="canter">Canter</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-rate">Playback</span>
+      <div class="seg" role="group" aria-labelledby="lbl-rate">
+        <button type="button" id="rate-1" data-rate="1">Normal</button>
+        <button type="button" id="rate-05" data-rate="0.5">½ speed</button>
+        <button type="button" id="rate-025" data-rate="0.25">¼ speed</button>
+        <button type="button" id="rate-0" data-rate="0">Pause</button>
+      </div>
+    </div>
+    <div class="group" id="scrub-group" hidden>
+      <label class="glabel" for="scrub">Stride position</label>
+      <div class="scrub"><input type="range" id="scrub" min="0" max="100" step="1" value="0"><output id="scrub-out" for="scrub">0%</output></div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-view">Camera</span>
+      <div class="seg" role="group" aria-labelledby="lbl-view">
+        <button type="button" id="view-game" data-view="game">Game camera</button>
+        <button type="button" id="view-side" data-view="side">Side view</button>
+        <button type="button" id="view-orbit" data-view="orbit">Free turn</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-size">Size</span>
+      <div class="seg" role="group" aria-labelledby="lbl-size">
+        <button type="button" id="size-close" data-size="close">Close-up</button>
+        <button type="button" id="size-game" data-size="game">True game size</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-coat">Coat</span>
+      <div class="seg" role="group" aria-labelledby="lbl-coat" id="coats"></div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-marks">White markings</span>
+      <div class="seg" role="group" aria-labelledby="lbl-marks">
+        <button type="button" id="marks-off" data-marks="off">None</button>
+        <button type="button" id="marks-on" data-marks="on">Blaze and socks</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-rider">Rider</span>
+      <div class="seg" role="group" aria-labelledby="lbl-rider">
+        <button type="button" id="rider-on" data-rider="on">Scout</button>
+        <button type="button" id="rider-off" data-rider="off">None</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-cmp">Current horse</span>
+      <div class="seg" role="group" aria-labelledby="lbl-cmp">
+        <button type="button" id="cmp-on" data-cmp="on">Show</button>
+        <button type="button" id="cmp-off" data-cmp="off">Hide</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="compare">
+    <div class="card">
+      <h2>In the game now</h2>
+      <dl class="stats">
+        <dt>Triangles</dt><dd id="old-tris">–</dd>
+        <dt>Legs</dt><dd>one stiff piece each, swinging back and forth</dd>
+        <dt>Built from</dt><dd>stretched spheres, cylinders and boxes, written in code</dd>
+      </dl>
+    </div>
+    <div class="card">
+      <h2>New, version 2</h2>
+      <dl class="stats">
+        <dt>Triangles</dt><dd id="new-tris">–</dd>
+        <dt>Legs</dt><dd>three jointed parts each, driven by the gait so hooves plant and joints fold the right way</dd>
+        <dt>Built from</dt><dd>anatomy modelled in Blender, fused into one surface, with shading baked into every vertex</dd>
+      </dl>
+    </div>
+  </div>
+
+  <section class="notes">
+    <h2>What changed since version 1</h2>
+    <ul>
+      <li>Each leg bends: at the knee in front, the hock behind, and the fetlock on all four. In the air the front knees fold back and the hind hocks flex; on the ground the leg straightens under the weight.</li>
+      <li>Real gaits: the walk's four beats, the trot's diagonal pairs, and the canter's three beats with a moment in the air. The body rises, dips and rocks over the legs.</li>
+      <li>About three times the detail: shoulders, elbows, stifles, hocks, tendons, fetlocks, chestnuts and ergots, heel bulbs, jaw, cheeks, nostrils and hollow ears. The mane and tail are made of separate locks.</li>
+      <li>Real coat colours: bays and duns have black legs, mane, tail and muzzle, greys are dappled, and duns have a dark stripe down the back. White blazes and socks are optional.</li>
+    </ul>
+  </section>
+
+  <section class="notes">
+    <h2>Before you decide</h2>
+    <ul>
+      <li>It costs <span id="tri-ratio">11</span> times the triangles of today's horse. In the game I'd add a lighter version, around 2,500 triangles, for normal zoom, where the two look the same. I'll measure the frame rate before committing.</li>
+      <li>In the game each unit's speed picks the gait: the canter for scouts, light cavalry and horse archers, the trot for knights. Hooves stay planted while a unit moves in a straight line. They will still slip a little when it turns or stops, as in most strategy games.</li>
+      <li>A foreleg carrying weight can ride up a few centimetres into the shoulder rather than buckling at the knee. Horses have no collarbone, so real shoulders move like this too.</li>
+      <li>Camels keep their current model for now.</li>
+    </ul>
+  </section>
+
+  <section class="answer">
+    <h2>Your call</h2>
+    <p>Reply in the chat with <kbd>approve the horse</kbd> and I'll put it into the game for every mounted unit. Or tell me what to change: how high the legs lift, the speed of a gait, the build, the head, anything you notice.</p>
+  </section>
+</div>
+
+<script type="application/json" id="old-rig">%%OLD%%</script>
+<script type="application/json" id="new-horse">%%NEW%%</script>
+<script>
+%%GAIT%%
+</script>
+
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.1/three.module.min.js';
+
+const OLD = JSON.parse(document.getElementById('old-rig').textContent);
+const NEW = JSON.parse(document.getElementById('new-horse').textContent);
+const HORSE_BONES = new Set(['root', 'body', 'neck', 'legFL', 'legFR', 'legBL', 'legBR', 'tail']);
+const SCOUT_COAT = 0x8a5a32;
+const gait = makeHorseGait(NEW.bones);
+
+// coats: base, black points (legs, mane, tail, muzzle), mane/tail hair, and pattern extras
+const COATS = [
+  { id: 'bay', name: 'Bay', coat: 0x8a5a32, points: 0x1c1612, hair: 0x19130f, oldHex: 0x8a5a32 },
+  { id: 'darkbay', name: 'Dark bay', coat: 0x57341f, points: 0x1a1410, hair: 0x16110d, oldHex: 0x6a4228 },
+  { id: 'chestnut', name: 'Chestnut', coat: 0xa2622f, points: null, hair: 0x8a4a22, oldHex: 0xa06a3a },
+  { id: 'black', name: 'Black', coat: 0x2e2620, points: 0x1c1714, hair: 0x16120f, oldHex: 0x3a2a20 },
+  { id: 'grey', name: 'Grey', coat: 0xd2cdc3, points: 0x8c877e, hair: 0xe6e2da, dapple: 0x9d988e, oldHex: 0xe8e0d0 },
+  { id: 'dun', name: 'Dun', coat: 0xbc9d69, points: 0x201a14, hair: 0x1c1712, stripe: 0x4a3a28, oldHex: 0xb89a6a },
+];
+const WHITE = 0xe8e4dc, HOOF = 0x2e2a26, HOOF_PALE = 0x9a8e78, HORN = 0x2a2420, NOSTRIL = 0x140f0c, EYE = 0x0c0907;
+
+const state = { gait: 'canter', rate: 1, view: 'game', size: 'close', rider: 'on', coat: 0, marks: 'off', cmp: 'on', scrub: 0 };
+try {
+  const saved = JSON.parse(localStorage.getItem('horse-review-2') || 'null');
+  if (saved) Object.assign(state, saved, { rate: saved.rate === 0 ? 1 : saved.rate });
+} catch { /* storage unavailable */ }
+const save = () => { try { localStorage.setItem('horse-review-2', JSON.stringify(state)); } catch { /* ignore */ } };
+
+const stage = document.getElementById('stage');
+const canvas = document.getElementById('view');
+let renderer;
+try {
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+} catch (e) {
+  stage.insertAdjacentHTML('beforeend', '<div class="err">Your browser could not start WebGL, so the 3D view can’t be shown here.</div>');
+  throw e;
+}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2b2217);
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6a5a3a, 1.35));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+sun.position.set(-0.55, 0.78, 0.3).multiplyScalar(8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 0.5, far: 20 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.02;
+scene.add(sun);
+
+// ground: steppe grass with one-tile grid lines; it scrolls under the horses at the gait's speed
+const GROUND_SPAN = 12;
+let groundTex;
+{
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#7d7a3e';
+  g.fillRect(0, 0, 512, 512);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * 512, y = rnd() * 512, r = 2 + rnd() * 7, k = rnd();
+    g.fillStyle = k < 0.5 ? 'rgba(96,104,48,0.35)' : k < 0.8 ? 'rgba(140,128,70,0.3)' : 'rgba(70,78,36,0.35)';
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+  for (let i = 0; i < 90; i++) {
+    const x = rnd() * 512, y = rnd() * 512;
+    g.fillStyle = 'rgba(160,150,120,0.8)';
+    g.beginPath();
+    g.ellipse(x, y, 3 + rnd() * 3, 2 + rnd() * 2, rnd() * 3, 0, Math.PI * 2);
+    g.fill();
+  }
+  g.strokeStyle = 'rgba(40,36,18,0.22)';
+  g.lineWidth = 2;
+  for (let i = 0; i <= 512; i += 128) {
+    g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 512); g.stroke();
+    g.beginPath(); g.moveTo(0, i); g.lineTo(512, i); g.stroke();
+  }
+  groundTex = new THREE.CanvasTexture(c);
+  groundTex.colorSpace = THREE.SRGBColorSpace;
+  groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+  groundTex.repeat.set(GROUND_SPAN / 4, GROUND_SPAN / 4);  // 4 tiles per texture repeat
+  groundTex.anisotropy = 8;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(GROUND_SPAN, GROUND_SPAN).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: groundTex }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+
+const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const lin = (hex) => new THREE.Color(hex);
+
+// team-coloured parts are white in the model and tinted with the player's colour, as the game does (blue player)
+const TEAM = (() => {
+  const c = new THREE.Color(0x2f5fe0), hsl = {};
+  c.getHSL(hsl);
+  return c.setHSL(hsl.h, hsl.s * 0.82, hsl.l * 0.9);
+})();
+
+function flatGeometry(p) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+  const col = Float32Array.from(p.col);
+  if (p.pc) for (let i = 0; i < col.length; i += 3) { col[i] *= TEAM.r; col[i + 1] *= TEAM.g; col[i + 2] *= TEAM.b; }
+  g.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  return g;
+}
+
+function addMesh(group, geo) {
+  const m = new THREE.Mesh(geo, mat);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  group.add(m);
+  return m;
+}
+
+// ---- current horse (and scout) exported from the game code: bone pivots are relative to the parent
+const oldRig = { root: new THREE.Group(), groups: {} };
+OLD.bones.forEach((b) => {
+  const g = new THREE.Group();
+  g.position.set(...b.pivot);
+  g.userData.rest = g.position.clone();
+  oldRig.groups[b.name] = g;
+});
+OLD.bones.forEach((b) => (b.parent >= 0 ? oldRig.groups[OLD.bones[b.parent].name] : oldRig.root).add(oldRig.groups[b.name]));
+const oldCoatParts = [];
+const riders = [];
+for (const p of OLD.parts) {
+  const g = flatGeometry(p);
+  const mesh = addMesh(oldRig.groups[p.bone], g);
+  if (HORSE_BONES.has(p.bone)) {
+    const base = lin(SCOUT_COAT), col = g.getAttribute('color'), coat = [];
+    for (let i = 0; i < col.count; i++) {
+      const r = col.getX(i) / base.r, gg = col.getY(i) / base.g, b = col.getZ(i) / base.b;
+      if (Math.abs(r - gg) < 0.08 && Math.abs(r - b) < 0.08 && r > 0.85 && r < 1.15) coat.push(i, (r + gg + b) / 3);
+    }
+    oldCoatParts.push({ col, coat });
+  } else riders.push(mesh);
+}
+
+// ---- new horse: absolute bone pivots, parts relative to their bone's pivot
+const newRig = { root: new THREE.Group(), groups: {} };
+const pivot = {};
+NEW.bones.forEach((b) => { pivot[b.name] = new THREE.Vector3(...b.pivot); });
+NEW.bones.forEach((b) => {
+  const g = new THREE.Group();
+  g.position.copy(pivot[b.name]).sub(b.parent ? pivot[b.parent] : new THREE.Vector3());
+  g.userData.rest = g.position.clone();
+  newRig.groups[b.name] = g;
+});
+NEW.bones.forEach((b) => (b.parent ? newRig.groups[b.parent] : newRig.root).add(newRig.groups[b.name]));
+const newParts = [];
+for (const p of NEW.parts) {
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(p.ao.length * 3), 3));
+  g.setIndex(p.idx);
+  addMesh(newRig.groups[p.bone], g);
+  newParts.push({ g, p });
+}
+{
+  const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0x6a4a2a }));
+  saddle.position.set(0, 0.2 + 0.025, -0.04);
+  saddle.castShadow = true;
+  newRig.groups.body.add(saddle);
+}
+// the same scout rides the new horse; rider bones hang off the body bone in both rigs
+{
+  const riderRoot = OLD.bones.filter((b) => !HORSE_BONES.has(b.name) && OLD.bones[b.parent] && OLD.bones[b.parent].name === 'body');
+  for (const rb of riderRoot) {
+    const clone = oldRig.groups[rb.name].clone(true);
+    newRig.groups.body.add(clone);
+    clone.traverse((o) => { if (o.isMesh) riders.push(o); });
+  }
+}
+
+const countTris = (parts, test) => parts.reduce((a, p) => a + (test(p) ? (p.idx ? p.idx.length : p.pos.length / 3) / 3 : 0), 0);
+const oldTris = countTris(OLD.parts, (p) => HORSE_BONES.has(p.bone));
+const newTris = countTris(NEW.parts, () => true);
+document.getElementById('old-tris').textContent = oldTris.toLocaleString('en-US');
+document.getElementById('new-tris').textContent = newTris.toLocaleString('en-US');
+document.getElementById('tri-ratio').textContent = String(Math.round(newTris / oldTris));
+
+const RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
+scene.add(oldRig.root, newRig.root);
+
+function colorize() {
+  const C = COATS[state.coat];
+  const marks = state.marks === 'on';
+  const coatOld = lin(C.oldHex);
+  for (const { col, coat } of oldCoatParts) {
+    for (let k = 0; k < coat.length; k += 2) col.setXYZ(coat[k], coatOld.r * coat[k + 1], coatOld.g * coat[k + 1], coatOld.b * coat[k + 1]);
+    col.needsUpdate = true;
+  }
+  const mix = (a, b, w) => { a.r += (b.r - a.r) * w; a.g += (b.g - a.g) * w; a.b += (b.b - a.b) * w; };
+  const coat = lin(C.coat), hair = lin(C.hair), points = C.points ? lin(C.points) : null;
+  const dapple = C.dapple ? lin(C.dapple) : null, stripe = C.stripe ? lin(C.stripe) : null;
+  const white = lin(WHITE), hoof = lin(HOOF), hoofPale = lin(HOOF_PALE), horn = lin(HORN), nostril = lin(NOSTRIL), eye = lin(EYE);
+  const c = new THREE.Color();
+  for (const { g, p } of newParts) {
+    const col = g.getAttribute('color'), m = p.masks || {};
+    const socked = marks && (p.bone.startsWith('legFL') || p.bone.startsWith('legBL'));
+    for (let i = 0; i < p.ao.length; i++) {
+      c.copy(p.mat === 'hair' ? hair : p.mat === 'eye' ? eye : coat);
+      if (p.mat === 'coat') {
+        if (dapple && m.dapple) mix(c, dapple, m.dapple[i] * 0.6);
+        if (stripe && m.stripe) mix(c, stripe, m.stripe[i] * 0.85);
+        if (points && m.points) mix(c, points, m.points[i]);
+        if (socked && m.sock) mix(c, white, m.sock[i]);
+        if (marks && m.blaze) mix(c, white, m.blaze[i]);
+        if (m.hoof) mix(c, socked ? hoofPale : hoof, m.hoof[i]);
+        if (m.horn) mix(c, horn, m.horn[i] * 0.9);
+        if (m.nostril) mix(c, nostril, m.nostril[i] * 0.85);
+      }
+      const k = 0.26 + 0.74 * Math.pow(p.ao[i], 1.2);
+      col.setXYZ(i, c.r * k, c.g * k, c.b * k);
+    }
+    col.needsUpdate = true;
+  }
+}
+
+// ---- animation
+const GAIT_KEYS = ['walk', 'trot', 'canter'];
+function newPose(name, t) {
+  return name === 'stand' ? gait.stand(t) : gait.pose(GAITS[name], t);
+}
+/** The game's current rider animation: every leg swings as one piece. */
+function oldPose(name, t) {
+  if (name === 'stand') return { neck: { rx: Math.max(0, Math.sin(t * 0.5)) * 0.6 }, tail: { rx: Math.sin(t * 1.5) * 0.12 } };
+  const speed = GAITS[name].speed;
+  const ph = t * Math.max(1.4, speed * 1.5) * Math.PI * 2, sw = Math.sin(ph) * 0.6;
+  return {
+    legFL: { rx: sw }, legBR: { rx: sw }, legFR: { rx: -sw }, legBL: { rx: -sw },
+    body: { py: Math.abs(Math.sin(ph)) * 0.035 }, neck: { rx: Math.sin(ph) * 0.08 }, tail: { rx: Math.sin(ph * 0.5) * 0.15 },
+  };
+}
+function lerpPose(a, b, k) {
+  const out = {};
+  for (const key of new Set([...Object.keys(a), ...Object.keys(b)])) {
+    const pa = a[key] || {}, pb = b[key] || {};
+    out[key] = {};
+    for (const f of ['rx', 'rz', 'py']) out[key][f] = (pa[f] || 0) + ((pb[f] || 0) - (pa[f] || 0)) * k;
+  }
+  return out;
+}
+function applyPose(rig, pose) {
+  for (const [name, grp] of Object.entries(rig.groups)) {
+    const p = pose[name];
+    grp.rotation.set(p ? p.rx || 0 : 0, 0, p ? p.rz || 0 : 0);
+    grp.position.copy(grp.userData.rest);
+    if (p && p.py) grp.position.y += p.py;
+  }
+}
+
+// ---- footfall diagram
+const plot = document.getElementById('ff-plot');
+const playhead = document.getElementById('playhead');
+function drawFootfalls() {
+  const g = GAITS[state.gait];
+  document.getElementById('gait-name').textContent = g ? g.label : 'Standing';
+  document.getElementById('gait-caption').textContent = g ? g.caption : 'All four hooves on the ground, grazing now and then.';
+  document.getElementById('gait-speed').textContent = g ? g.note : '';
+  document.getElementById('ff-legend').textContent = state.gait === 'canter'
+    ? 'Bars show when each hoof is on the ground. The leading right fore is picked out in red.'
+    : 'Bars show when each hoof is on the ground.';
+  plot.querySelectorAll('.ff-track').forEach((track) => {
+    track.textContent = '';
+    const leg = track.dataset.leg;
+    const spans = !g ? [[0, 1]] : (() => {
+      const a = g.touch[leg], b = a + g.duty;
+      return b <= 1 ? [[a, b]] : [[a, 1], [0, b - 1]];
+    })();
+    for (const [a, b] of spans) {
+      const bar = document.createElement('div');
+      bar.className = 'ff-bar' + (state.gait === 'canter' && leg === 'FR' ? ' lead' : '');
+      bar.style.left = a * 100 + '%';
+      bar.style.width = (b - a) * 100 + '%';
+      track.appendChild(bar);
+    }
+  });
+}
+function placePlayhead(frac) {
+  const track = plot.querySelector('.ff-track');
+  const x = track.offsetLeft + frac * track.clientWidth;
+  playhead.style.left = x + 'px';
+  playhead.hidden = !GAITS[state.gait];
+}
+
+// ---- cameras
+const gameCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const orbitCam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+const target = new THREE.Vector3(0, 0.72, 0);
+const orbit = { yaw: Math.PI / 4, pitch: 0.42, dist: 5.2 };
+const GAME_ZOOM = 62;
+let zoomScale = 1;
+
+function layoutCameras() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  const side = state.view === 'side';
+  const close = side ? Math.min(w / 2.0, h / 1.45) : Math.min(w / 3.6, h / 2.4);
+  const zoom = state.size === 'game' ? GAME_ZOOM : close * zoomScale;
+  gameCam.left = -w / 2 / zoom;
+  gameCam.right = w / 2 / zoom;
+  gameCam.top = h / 2 / zoom;
+  gameCam.bottom = -h / 2 / zoom;
+  const d = side
+    ? new THREE.Vector3(1, 0.08, 0).normalize()
+    : new THREE.Vector3(Math.cos(Math.PI / 6) * Math.sin(Math.PI / 4), Math.sin(Math.PI / 6), Math.cos(Math.PI / 6) * Math.cos(Math.PI / 4));
+  const c = side ? new THREE.Vector3(0, 0.62, 0.1) : target;
+  gameCam.position.copy(c).addScaledVector(d, 20);
+  gameCam.lookAt(c);
+  gameCam.updateProjectionMatrix();
+  orbitCam.aspect = w / h;
+  orbitCam.updateProjectionMatrix();
+}
+function placeOrbit() {
+  const c = Math.cos(orbit.pitch);
+  orbitCam.position.set(target.x + Math.sin(orbit.yaw) * c * orbit.dist, target.y + Math.sin(orbit.pitch) * orbit.dist, target.z + Math.cos(orbit.yaw) * c * orbit.dist);
+  orbitCam.lookAt(target);
+}
+
+const pointers = new Map();
+let pinch0 = 0;
+canvas.addEventListener('pointerdown', (e) => {
+  canvas.setPointerCapture(e.pointerId);
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    pinch0 = Math.hypot(a.x - b.x, a.y - b.y);
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId);
+  if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y;
+  p.x = e.clientX;
+  p.y = e.clientY;
+  if (pointers.size === 1 && Math.abs(dx) + Math.abs(dy) > 0) {
+    if (state.view !== 'orbit') setState({ view: 'orbit' });
+    orbit.yaw -= dx * 0.008;
+    orbit.pitch = Math.min(1.35, Math.max(0.05, orbit.pitch + dy * 0.006));
+  } else if (pointers.size === 2) {
+    const [a, b] = [...pointers.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    if (pinch0 > 0) zoomBy(pinch0 / d);
+    pinch0 = d;
+  }
+});
+const release = (e) => { pointers.delete(e.pointerId); pinch0 = 0; };
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+function zoomBy(f) {
+  if (state.view === 'orbit') orbit.dist = Math.min(12, Math.max(1.4, orbit.dist * f));
+  else if (state.size === 'close') { zoomScale = Math.min(3, Math.max(0.4, zoomScale / f)); layoutCameras(); }
+}
+
+// ---- controls
+const coatBox = document.getElementById('coats');
+COATS.forEach((c, i) => {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.id = 'coat-' + c.id;
+  b.dataset.coat = String(i);
+  b.innerHTML = `<span class="swatch" style="background:#${c.coat.toString(16).padStart(6, '0')}"></span>${c.name}`;
+  coatBox.appendChild(b);
+});
+
+let blendFrom = null, blendStart = 0, prevGait = state.gait;
+function setState(patch) {
+  if (patch.gait && patch.gait !== state.gait) { blendFrom = state.gait; blendStart = clock; }
+  Object.assign(state, patch);
+  save();
+  sync();
+}
+function sync() {
+  const pressed = (sel, attr, val) => document.querySelectorAll(sel).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[attr] === String(val))));
+  pressed('[data-gait]', 'gait', state.gait);
+  pressed('[data-rate]', 'rate', state.rate);
+  pressed('[data-view]', 'view', state.view);
+  pressed('[data-size]', 'size', state.size);
+  pressed('[data-coat]', 'coat', state.coat);
+  pressed('[data-marks]', 'marks', state.marks);
+  pressed('[data-rider]', 'rider', state.rider);
+  pressed('[data-cmp]', 'cmp', state.cmp);
+  document.querySelectorAll('[data-size]').forEach((b) => { b.disabled = state.view === 'orbit'; });
+  document.querySelectorAll('[data-cmp]').forEach((b) => { b.disabled = state.view === 'side'; });
+  document.getElementById('scrub-group').hidden = !(state.rate === 0 && GAITS[state.gait]);
+  for (const m of riders) m.visible = state.rider === 'on';
+  const both = state.cmp === 'on' && state.view !== 'side';
+  oldRig.root.visible = both;
+  if (both) {
+    oldRig.root.position.copy(RIGHT).multiplyScalar(-0.95);
+    newRig.root.position.copy(RIGHT).multiplyScalar(0.95);
+  } else {
+    newRig.root.position.set(0, 0, 0);
+  }
+  colorize();
+  drawFootfalls();
+  layoutCameras();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b || b.disabled) return;
+  if (b.dataset.gait) setState({ gait: b.dataset.gait });
+  else if (b.dataset.rate !== undefined) {
+    const rate = Number(b.dataset.rate);
+    if (rate === 0) state.scrub = frac(clock * (GAITS[state.gait]?.freq || 1));
+    setState({ rate });
+    scrubInput.value = String(Math.round(state.scrub * 100));
+    scrubOut.value = scrubInput.value + '%';
+  } else if (b.dataset.view) setState({ view: b.dataset.view });
+  else if (b.dataset.size) { zoomScale = 1; setState({ size: b.dataset.size }); }
+  else if (b.dataset.coat) setState({ coat: Number(b.dataset.coat) });
+  else if (b.dataset.marks) setState({ marks: b.dataset.marks });
+  else if (b.dataset.rider) setState({ rider: b.dataset.rider });
+  else if (b.dataset.cmp) setState({ cmp: b.dataset.cmp });
+});
+const scrubInput = document.getElementById('scrub'), scrubOut = document.getElementById('scrub-out');
+scrubInput.addEventListener('input', () => {
+  state.scrub = Number(scrubInput.value) / 100;
+  scrubOut.value = scrubInput.value + '%';
+});
+new ResizeObserver(() => { layoutCameras(); drawFootfalls(); }).observe(stage);
+
+const tagOld = document.getElementById('tag-old'), tagNew = document.getElementById('tag-new');
+const tmp = new THREE.Vector3();
+function placeTag(el, rig, cam) {
+  tmp.copy(rig.root.position).project(cam);
+  el.style.left = ((tmp.x + 1) / 2) * stage.clientWidth + 'px';
+  el.style.top = ((1 - tmp.y) / 2) * stage.clientHeight + 'px';
+  el.hidden = !rig.root.visible || state.view === 'side' || tmp.z > 1;
+}
+
+// ---- main loop: `clock` is animation time (scaled by the playback rate)
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduced && state.rate !== 0) state.rate = 0.25;
+let clock = 0, last = performance.now(), groundZ = 0;
+
+function poseAt(t) {
+  let pNew = newPose(state.gait, t), pOld = oldPose(state.gait, t);
+  if (blendFrom) {
+    const k = Math.min(1, (clock - blendStart) / 0.45);
+    const e = k * k * (3 - 2 * k);
+    pNew = lerpPose(newPose(blendFrom, t), pNew, e);
+    pOld = lerpPose(oldPose(blendFrom, t), pOld, e);
+    if (k >= 1) blendFrom = null;
+  }
+  applyPose(newRig, pNew);
+  applyPose(oldRig, pOld);
+}
+
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000);
+  last = now;
+  const g = GAITS[state.gait];
+  let t;
+  if (state.rate === 0 && g) {
+    t = state.scrub / g.freq;
+    clock = t;
+    groundZ = -g.speed * t;
+  } else {
+    clock += dt * state.rate;
+    t = clock;
+    if (g) groundZ -= g.speed * dt * state.rate;
+  }
+  poseAt(t);
+  // the texture repeats every 4 tiles; shift it so the ground moves towards -z under the horses
+  groundTex.offset.set(0, frac(groundZ / 4));
+  placePlayhead(g ? frac(t * g.freq) : 0);
+  let cam = gameCam;
+  if (state.view === 'orbit') { placeOrbit(); cam = orbitCam; }
+  renderer.render(scene, cam);
+  placeTag(tagOld, oldRig, cam);
+  placeTag(tagNew, newRig, cam);
+  requestAnimationFrame(frame);
+}
+sync();
+scrubInput.value = String(Math.round(state.scrub * 100));
+scrubOut.value = scrubInput.value + '%';
+requestAnimationFrame(frame);
+
+// frame-by-frame check used while building this page: n poses of a gait from the side, laid out in a row
+window.__filmstrip = (name, n = 8, w = 360, h = 300, view = 'side') => {
+  const saved = { ...state };
+  Object.assign(state, { view, cmp: 'off', size: 'close', gait: name });
+  blendFrom = null;
+  sync();
+  const out = document.createElement('canvas');
+  out.width = w * n;
+  out.height = h;
+  const ctx = out.getContext('2d');
+  const g = GAITS[name];
+  renderer.setSize(w, h, false);
+  const aspect = w / h, half = 0.95;
+  const cam = gameCam;
+  cam.left = -half * aspect; cam.right = half * aspect; cam.top = half + 0.05; cam.bottom = -half + 0.05;
+  cam.updateProjectionMatrix();
+  for (let i = 0; i < n; i++) {
+    const t = g ? i / n / g.freq : i * 0.5;
+    applyPose(newRig, newPose(name, t));
+    groundTex.offset.set(0, frac((g ? -g.speed * t : 0) / 4));
+    renderer.render(scene, cam);
+    ctx.drawImage(renderer.domElement, i * w, 0, w, h);
+    ctx.fillStyle = '#fff';
+    ctx.font = '14px sans-serif';
+    ctx.fillText(`${Math.round((i / n) * 100)}%`, i * w + 8, 18);
+  }
+  Object.assign(state, saved);
+  sync();
+  return out.toDataURL('image/png');
+};
+window.__ready = true;
+</script>
