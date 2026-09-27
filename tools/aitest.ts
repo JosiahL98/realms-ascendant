@@ -1,4 +1,4 @@
-/* Headless AI vs AI match: npx tsx tools/aitest.ts [minutes] [players] [seed] [map] */
+/* Headless AI vs AI match: npx tsx tools/aitest.ts [minutes] [players] [seed] [map] [difficulty] */
 import { Game } from '../src/sim/game';
 import { AIPlayer } from '../src/ai/ai';
 import { AGE_NAMES } from '../src/data/types';
@@ -7,13 +7,14 @@ const minutes = Number(process.argv[2] ?? 20);
 const np = Number(process.argv[3] ?? 2);
 const seed = Number(process.argv[4] ?? 777);
 const map = (process.argv[5] ?? 'steppe') as 'steppe';
+const diff = (process.argv[6] ?? 'standard') as 'standard';
 const civs = ['carthaginians', 'gauls', 'parthians', 'han', 'latins', 'hellenes', 'suebi', 'kushites'];
 const game = new Game({
   seed, mapType: map, mapSize: np <= 2 ? 120 : np <= 4 ? 168 : 200,
-  players: Array.from({ length: np }, (_, i) => ({ name: `AI${i + 1}`, civ: civs[(i + seed) % civs.length], color: i, team: i + 1, human: false, difficulty: 'standard' as const })),
+  players: Array.from({ length: np }, (_, i) => ({ name: `AI${i + 1}`, civ: civs[(i + seed) % civs.length], color: i, team: i + 1, human: false, difficulty: diff })),
   resources: 'standard', popLimit: 200, reveal: 'normal', victory: 'standard', startAge: 0,
 });
-const ais = game.players.filter((p) => !p.isGaia).map((p) => new AIPlayer(game, p.id, 'standard'));
+const ais = game.players.filter((p) => !p.isGaia).map((p) => new AIPlayer(game, p.id, diff));
 const t0 = performance.now();
 const pathStats = new Map<string, number>();
 (globalThis as any).__pathStats = pathStats;

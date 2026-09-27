@@ -18,14 +18,27 @@ interface DiffCfg {
   feudalVills: number;
   castleVills: number;
   imperialVills: number;
+  /** Earliest game times (s) for going up to the Castle and Imperial ages. */
+  castleAt: number;
+  imperialAt: number;
+  /** Rest (s) between attack waves. */
+  waveGap: number;
+  /** Pause (s) after each villager before the town centre starts the next one (0: never idle). */
+  vilPause: number;
   cheat: number;
 }
 
+// Each level is roughly a notch below what it was: a smaller economy, slower reactions, later and smaller attacks,
+// later ages (and only a light resource bonus on Hardest).
 const DIFF: Record<Difficulty, DiffCfg> = {
-  easy: { maxVills: 35, thinkEvery: 4, firstAttack: 1200, armyMul: 0.6, feudalVills: 16, castleVills: 22, imperialVills: 30, cheat: 0 },
-  standard: { maxVills: 70, thinkEvery: 2, firstAttack: 780, armyMul: 1, feudalVills: 21, castleVills: 28, imperialVills: 40, cheat: 0 },
-  hard: { maxVills: 90, thinkEvery: 1, firstAttack: 600, armyMul: 1.25, feudalVills: 22, castleVills: 30, imperialVills: 45, cheat: 0 },
-  hardest: { maxVills: 110, thinkEvery: 1, firstAttack: 480, armyMul: 1.5, feudalVills: 23, castleVills: 32, imperialVills: 50, cheat: 0.35 },
+  easy: { maxVills: 22, thinkEvery: 6, firstAttack: 1800, armyMul: 0.4, feudalVills: 12, castleVills: 18, imperialVills: 24,
+    castleAt: 1100, imperialAt: 2300, waveGap: 300, vilPause: 22, cheat: 0 },
+  standard: { maxVills: 45, thinkEvery: 3, firstAttack: 1080, armyMul: 0.7, feudalVills: 18, castleVills: 25, imperialVills: 34,
+    castleAt: 900, imperialAt: 1850, waveGap: 220, vilPause: 9, cheat: 0 },
+  hard: { maxVills: 65, thinkEvery: 2, firstAttack: 840, armyMul: 0.95, feudalVills: 21, castleVills: 28, imperialVills: 40,
+    castleAt: 760, imperialAt: 1600, waveGap: 160, vilPause: 4, cheat: 0 },
+  hardest: { maxVills: 85, thinkEvery: 1, firstAttack: 660, armyMul: 1.2, feudalVills: 22, castleVills: 30, imperialVills: 45,
+    castleAt: 680, imperialAt: 1450, waveGap: 130, vilPause: 3, cheat: 0.15 },
 };
 
 const ECO_TECHS = ['loom', 'doubleBitAxe', 'horseCollar', 'wheelbarrow', 'goldMining', 'bowSaw', 'heavyPlow', 'handCart', 'goldShaftMining',
@@ -63,6 +76,7 @@ export class AIPlayer {
   private vills: Unit[] = [];
   private army: Unit[] = [];
   private rng: RNG;
+  private nextVillAt = 0;
 
   constructor(game: Game, pid: number, difficulty: Difficulty) {
     this.rng = new RNG(game.setup.seed * 31 + pid * 977);
@@ -146,8 +160,8 @@ export class AIPlayer {
     const p = this.p;
     const v = this.vills.length;
     if (p.age === 0) return v >= this.cfg.feudalVills;
-    if (p.age === 1) return v >= this.cfg.castleVills && this.game.time > 700;
-    if (p.age === 2) return v >= this.cfg.imperialVills && this.game.time > 1500;
+    if (p.age === 1) return v >= this.cfg.castleVills && this.game.time > this.cfg.castleAt;
+    if (p.age === 2) return v >= this.cfg.imperialVills && this.game.time > this.cfg.imperialAt;
     return false;
   }
 
@@ -256,12 +270,15 @@ export class AIPlayer {
         if (this.vills.length >= cap) return;
       }
     }
+    const pause = this.cfg.vilPause;
+    if (pause > 0 && this.game.time < this.nextVillAt) return;
     for (const b of this.myBuildings) {
       if (b.type !== 'townCenter' || !b.built) continue;
       if (b.queue.some((q) => q.kind === 'tech' && TECHS[q.id]?.isAge)) continue;
-      if (b.queue.length >= 2) continue;
+      // a weaker AI lets its town centre stand idle between villagers
+      if (b.queue.length >= (pause > 0 ? 1 : 2)) continue;
       if (this.p.pop >= this.p.popCap) continue;
-      this.cmd({ c: 'train', building: b.id, unit: 'villager' });
+      if (this.cmd({ c: 'train', building: b.id, unit: 'villager' }) && pause > 0) this.nextVillAt = this.game.time + 25 + pause;
     }
   }
 
@@ -853,7 +870,7 @@ export class AIPlayer {
     const p = this.p;
     if (this.state === 'build') {
       if (g.time < this.cfg.firstAttack || p.age === 0) return;
-      if (g.time - this.lastAttackEnd < 120) return;
+      if (g.time - this.lastAttackEnd < this.cfg.waveGap) return;
       if (g.time < this.threatUntil) return;
       const threshold = Math.round((p.age === 1 ? 7 : p.age === 2 ? 14 : 22) * this.cfg.armyMul + this.waves * 2);
       const ready = this.army.filter((u) => u.type !== 'scout' || p.age >= 2);
