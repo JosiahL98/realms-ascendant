@@ -136,7 +136,7 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval · version 2</span>
+    <span class="status">Awaiting your approval · version 3</span>
     <h1>The Horse</h1>
     <p class="lede">The Blender horse, rebuilt with far more anatomy and with legs that bend at the knee, hock and fetlock. It walks, trots and canters with the real order of footfalls, and a hoof on the ground stays put while the body moves over it. The ground here scrolls at the horse's speed so you can check. The horse your cavalry rides today stands alongside for comparison. Nothing has been put into the game yet.</p>
   </header>
@@ -144,7 +144,7 @@
   <div class="stage" id="stage">
     <canvas id="view" aria-label="3D view of the current horse and the new horse moving over scrolling ground"></canvas>
     <div class="tag" id="tag-old">In the game now</div>
-    <div class="tag" id="tag-new">New, version 2</div>
+    <div class="tag" id="tag-new">New, version 3</div>
     <div class="hint" id="hint">Drag to turn · scroll or pinch to zoom</div>
   </div>
 
@@ -242,7 +242,7 @@
       </dl>
     </div>
     <div class="card">
-      <h2>New, version 2</h2>
+      <h2>New, version 3</h2>
       <dl class="stats">
         <dt>Triangles</dt><dd id="new-tris">–</dd>
         <dt>Legs</dt><dd>three jointed parts each, driven by the gait so hooves plant and joints fold the right way</dd>
@@ -252,10 +252,17 @@
   </div>
 
   <section class="notes">
-    <h2>What changed since version 1</h2>
+    <h2>Latest change</h2>
+    <ul>
+      <li>The body no longer bobs or rocks. It travels level at a steady height and the legs take up all the motion. To make that possible it rides about 2 cm lower while moving than when standing.</li>
+    </ul>
+  </section>
+
+  <section class="notes">
+    <h2>Since version 1</h2>
     <ul>
       <li>Each leg bends: at the knee in front, the hock behind, and the fetlock on all four. In the air the front knees fold back and the hind hocks flex; on the ground the leg straightens under the weight.</li>
-      <li>Real gaits: the walk's four beats, the trot's diagonal pairs, and the canter's three beats with a moment in the air. The body rises, dips and rocks over the legs.</li>
+      <li>Real gaits: the walk's four beats, the trot's diagonal pairs, and the canter's three beats with a moment in the air.</li>
       <li>About three times the detail: shoulders, elbows, stifles, hocks, tendons, fetlocks, chestnuts and ergots, heel bulbs, jaw, cheeks, nostrils and hollow ears. The mane and tail are made of separate locks.</li>
       <li>Real coat colours: bays and duns have black legs, mane, tail and muzzle, greys are dappled, and duns have a dark stripe down the back. White blazes and socks are optional.</li>
     </ul>
@@ -266,7 +273,7 @@
     <ul>
       <li>It costs <span id="tri-ratio">11</span> times the triangles of today's horse. In the game I'd add a lighter version, around 2,500 triangles, for normal zoom, where the two look the same. I'll measure the frame rate before committing.</li>
       <li>In the game each unit's speed picks the gait: the canter for scouts, light cavalry and horse archers, the trot for knights. Hooves stay planted while a unit moves in a straight line. They will still slip a little when it turns or stops, as in most strategy games.</li>
-      <li>A foreleg carrying weight can ride up a few centimetres into the shoulder rather than buckling at the knee. Horses have no collarbone, so real shoulders move like this too.</li>
+      <li>A foreleg carrying weight slides a couple of centimetres up or down in the shoulder so it stays straight under the level body. Horses have no collarbone, so real shoulders move like this too.</li>
       <li>Camels keep their current model for now.</li>
     </ul>
   </section>
