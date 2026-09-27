@@ -305,7 +305,7 @@ def vertex_masks(o):
     return out
 
 
-def export_model(objs, ao, bones, path):
+def export_model(objs, ao, bones, path, variants=None):
     """
     Write bones (absolute rest pivots) and parts: positions relative to the part's bone pivot (game space),
     normals, AO, masks and triangle indices.
@@ -326,6 +326,8 @@ def export_model(objs, ao, bones, path):
             idx.extend(t.vertices)
         part = {'name': o.name, 'bone': o['bone'], 'mat': o['mat'], 'pos': pos, 'nrm': nrm,
                 'ao': [round(a, 2) for a in ao[o.name]], 'idx': idx}
+        if variants and variants.get(o.name):
+            part['variant'] = variants[o.name]
         masks = vertex_masks(o)
         if masks:
             part['masks'] = {k: [round(x, 2) for x in v] for k, v in masks.items()}

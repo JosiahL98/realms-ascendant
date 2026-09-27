@@ -1,0 +1,512 @@
+<title>Realms Ascendant Villagers</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #efe4c8; --surface: #f8f0dc; --ink: #2a1a0a; --muted: #6b5434; --line: #cdb88c;
+    --accent: #7a5a1c; --accent-ink: #fbf3df; --pill-bg: #e8cf86; --pill-ink: #3b2a1a; --focus: #a8781f; --stage: #1d140b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #150d06; --surface: #22170c; --ink: #eadfc4; --muted: #b6a27c; --line: #4a3620;
+      --accent: #d8b25a; --accent-ink: #1a1007; --pill-bg: #3b2a1a; --pill-ink: #f2d98c; --focus: #f2d98c; --stage: #0c0703;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #150d06; --surface: #22170c; --ink: #eadfc4; --muted: #b6a27c; --line: #4a3620;
+    --accent: #d8b25a; --accent-ink: #1a1007; --pill-bg: #3b2a1a; --pill-ink: #f2d98c; --focus: #f2d98c; --stage: #0c0703;
+  }
+  [hidden] { display: none !important; }
+  body { background: var(--ground); color: var(--ink); font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.5; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 22px; }
+  header { display: grid; gap: 10px; }
+  .status { justify-self: start; font-family: 'Cinzel', Georgia, serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; background: var(--pill-bg); color: var(--pill-ink); padding: 4px 10px; border-radius: 999px; }
+  h1 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0; letter-spacing: 0.02em; }
+  h2 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; margin: 0; letter-spacing: 0.03em; }
+  .lede { margin: 0; max-width: 70ch; }
+  .stage { position: relative; background: var(--stage); border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+  @media (max-width: 640px) { .stage { aspect-ratio: 4 / 3; } }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .stage canvas:active { cursor: grabbing; }
+  .tag { position: absolute; transform: translate(-50%, 12px); font-family: 'Cinzel', Georgia, serif; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.08em; color: #f2d98c; background: rgba(21, 13, 6, 0.78); padding: 2px 8px; border-radius: 3px; pointer-events: none; white-space: nowrap; }
+  .hint { position: absolute; left: 12px; bottom: 8px; font-size: 15px; color: rgba(234, 223, 196, 0.85); pointer-events: none; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+  .group { display: grid; gap: 6px; }
+  .glabel { font-family: 'Cinzel', Georgia, serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--surface); }
+  .seg button { font: inherit; font-size: 16px; background: transparent; color: var(--ink); border: 0; border-right: 1px solid var(--line);
+    padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.35); }
+  .compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(290px, 1fr)); gap: 20px; align-items: start; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 18px 20px; display: grid; gap: 10px; }
+  .card h2 { font-size: 19px; }
+  .stats { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; margin: 0; }
+  .stats dt { color: var(--muted); }
+  .stats dd { margin: 0; font-variant-numeric: lining-nums tabular-nums; }
+  section.notes { display: grid; gap: 10px; }
+  section.notes h2, section.answer h2 { font-size: 21px; }
+  section.notes ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 74ch; }
+  section.answer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 22px; }
+  section.answer p { margin: 0; max-width: 70ch; }
+  kbd { font-family: inherit; font-weight: 600; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="status">Awaiting your approval · part 1 of 2</span>
+    <h1>The Villagers</h1>
+    <p class="lede">New villagers built in Blender, a man and a woman as in the game, with the same body proportions as the cavalryman. This first part covers their bodies, clothes, tools and the loads they carry, and how they stand, walk and carry. The seven jobs (chopping, mining, building, farming, foraging, hunting and fishing) come next. Today's villagers stand alongside. Nothing has been put into the game yet.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="3D view of the current and new villagers"></canvas>
+    <div id="tags"></div>
+    <div class="hint">Drag to turn · scroll or pinch to zoom</div>
+  </div>
+
+  <div class="controls">
+    <div class="group"><span class="glabel" id="l-anim">Animation</span>
+      <div class="seg" role="group" aria-labelledby="l-anim">
+        <button type="button" data-anim="idle">Stand</button><button type="button" data-anim="walk">Walk</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-carry">Carrying</span>
+      <div class="seg" role="group" aria-labelledby="l-carry">
+        <button type="button" data-carry="none">Nothing</button><button type="button" data-carry="wood">Wood</button>
+        <button type="button" data-carry="food">Food</button><button type="button" data-carry="gold">Gold</button><button type="button" data-carry="stone">Stone</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-tool">Tool in hand</span>
+      <div class="seg" role="group" aria-labelledby="l-tool">
+        <button type="button" data-tool="none">None</button><button type="button" data-tool="axe">Axe</button><button type="button" data-tool="pick">Pick</button>
+        <button type="button" data-tool="hammer">Hammer</button><button type="button" data-tool="hoe">Hoe</button><button type="button" data-tool="spear">Spear</button>
+        <button type="button" data-tool="rod">Rod</button><button type="button" data-tool="basket">Basket</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-rate">Playback</span>
+      <div class="seg" role="group" aria-labelledby="l-rate">
+        <button type="button" data-rate="1">Normal</button><button type="button" data-rate="0.5">½ speed</button>
+        <button type="button" data-rate="0.25">¼ speed</button><button type="button" data-rate="0">Pause</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-cmp">Show</span>
+      <div class="seg" role="group" aria-labelledby="l-cmp">
+        <button type="button" data-cmp="old">Current vs new</button><button type="button" data-cmp="lod">Full vs light</button><button type="button" data-cmp="off">New only</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-view">Camera</span>
+      <div class="seg" role="group" aria-labelledby="l-view">
+        <button type="button" data-view="game">Game camera</button><button type="button" data-view="side">Side view</button><button type="button" data-view="orbit">Free turn</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-size">Size</span>
+      <div class="seg" role="group" aria-labelledby="l-size">
+        <button type="button" data-size="close">Close-up</button><button type="button" data-size="game">True game size</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-team">Player colour</span>
+      <div class="seg" role="group" aria-labelledby="l-team" id="teams"></div></div>
+  </div>
+
+  <div class="compare">
+    <div class="card"><h2>In the game now</h2>
+      <dl class="stats"><dt>Triangles</dt><dd id="old-tris">–</dd>
+        <dt>Body</dt><dd>boxes and cylinders; each leg is one stiff piece swinging from the hip</dd></dl></div>
+    <div class="card"><h2>New</h2>
+      <dl class="stats"><dt>Triangles</dt><dd><span id="new-tris">–</span> in full detail, <span id="light-tris">–</span> in the light version (body without tool or load)</dd>
+        <dt>Body</dt><dd>knees and ankles that bend, feet that plant on the ground and roll onto the toes, elbows and wrists; the tunic and dress move with the legs</dd></dl></div>
+  </div>
+
+  <section class="notes">
+    <h2>About these villagers</h2>
+    <ul>
+      <li>The man wears a knee-length tunic in your colour with a leather belt, leg wrappings and shoes, with a short beard and hair. The woman wears a mid-calf dress in your colour and a linen headscarf.</li>
+      <li>Walking, each foot stays planted while the body moves over it, then rolls onto the toes and swings through with the knee bending. The hips turn a little with each step and the arms swing opposite the legs.</li>
+      <li>The tunic and dress are skinned to the legs, so they swing with each stride instead of the legs poking through. I checked this by casting rays out from every leg point, frame by frame. No leg point shows through at any frame of the walk, in either the full or the light version, and no hand passes into the cloth or the body.</li>
+      <li>Loads are held in front of the chest in both arms: a bundle of logs, a basket of food with meat, a sack of gold ore, or a block of stone.</li>
+      <li>The tools are new too; pick one under “Tool in hand” to see it. They are hung from the right hand, except the basket in the left, and the jobs will move them.</li>
+    </ul>
+  </section>
+
+  <section class="answer"><h2>Your call</h2>
+    <p>Tell me what to change, or reply <kbd>approve the villagers</kbd> and I'll go on to their work animations.</p></section>
+</div>
+
+<script type="application/json" id="old-m">%%OLD_M%%</script>
+<script type="application/json" id="old-f">%%OLD_F%%</script>
+<script type="application/json" id="new-m">%%NEW_M%%</script>
+<script type="application/json" id="new-f">%%NEW_F%%</script>
+<script type="application/json" id="new-m-light">%%NEW_M_LIGHT%%</script>
+<script type="application/json" id="new-f-light">%%NEW_F_LIGHT%%</script>
+<script>
+%%HUMANPOSE%%
+</script>
+
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.1/three.module.min.js';
+
+const json = (id) => JSON.parse(document.getElementById(id).textContent);
+const OLD = { m: json('old-m'), f: json('old-f') };
+const NEW = { m: { full: json('new-m'), light: json('new-m-light') }, f: { full: json('new-f'), light: json('new-f-light') } };
+const TEAMS = [
+  { name: 'Blue', hex: 0x2f5fe0 }, { name: 'Red', hex: 0xd42a1e }, { name: 'Green', hex: 0x2fa82f }, { name: 'Yellow', hex: 0xe8d12a },
+  { name: 'Teal', hex: 0x22b8c8 }, { name: 'Purple', hex: 0x9a3cd8 }, { name: 'Grey', hex: 0x9a9a9a }, { name: 'Orange', hex: 0xf07c14 },
+];
+const KIT = {
+  skin: 0xe0b48c, team2: 0xe2dac8, leather: 0x7a5230, wrap: 0x9a8466, shoe: 0x4a3020, wood: 0x6a4a2a, iron: 0xa8acb4,
+  cord: 0xd8ccb0, wicker: 0xb08a4e, woodend: 0xc49a62, meat: 0xa8322a, sack: 0x9a7a52, gold: 0xf0c030, stone: 0xa4a098,
+};
+const HAIR = 0x3a2616, BEARD = 0x33200f;
+
+const state = { anim: 'walk', carry: 'none', tool: 'none', rate: 1, cmp: 'old', view: 'game', size: 'close', team: 0 };
+try { const s = JSON.parse(localStorage.getItem('villager-review-1') || 'null'); if (s) Object.assign(state, s, { rate: s.rate === 0 ? 1 : s.rate }); } catch { /* none */ }
+const save = () => { try { localStorage.setItem('villager-review-1', JSON.stringify(state)); } catch { /* ignore */ } };
+
+const stage = document.getElementById('stage'), canvas = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2b2217);
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6a5a3a, 1.35));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+sun.position.set(-0.55, 0.78, 0.3).multiplyScalar(8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -2.5, right: 2.5, top: 2.5, bottom: -2.5, near: 0.5, far: 20 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.015;
+scene.add(sun);
+
+let groundTex;
+{
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#7d7a3e'; g.fillRect(0, 0, 512, 512);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * 512, y = rnd() * 512, r = 2 + rnd() * 7, k = rnd();
+    g.fillStyle = k < 0.5 ? 'rgba(96,104,48,0.35)' : k < 0.8 ? 'rgba(140,128,70,0.3)' : 'rgba(70,78,36,0.35)';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  for (let i = 0; i < 90; i++) {
+    g.fillStyle = 'rgba(160,150,120,0.8)';
+    g.beginPath(); g.ellipse(rnd() * 512, rnd() * 512, 3 + rnd() * 3, 2 + rnd() * 2, rnd() * 3, 0, Math.PI * 2); g.fill();
+  }
+  g.strokeStyle = 'rgba(40,36,18,0.22)'; g.lineWidth = 2;
+  for (let i = 0; i <= 512; i += 128) { g.beginPath(); g.moveTo(i, 0); g.lineTo(i, 512); g.stroke(); g.beginPath(); g.moveTo(0, i); g.lineTo(512, i); g.stroke(); }
+  groundTex = new THREE.CanvasTexture(c);
+  groundTex.colorSpace = THREE.SRGBColorSpace;
+  groundTex.wrapS = groundTex.wrapT = THREE.RepeatWrapping;
+  groundTex.repeat.set(3, 3);
+  groundTex.anisotropy = 8;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: groundTex }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const lin = (hex) => new THREE.Color(hex);
+const dye = (hex) => { const c = new THREE.Color(hex), hsl = {}; c.getHSL(hsl); return c.setHSL(hsl.h, hsl.s * 0.82, hsl.l * 0.9); };
+
+// ---- today's villagers (game export: bone pivots relative to the parent; team parts white and tinted)
+function buildOld(D) {
+  const rig = { root: new THREE.Group(), groups: {}, team: [], old: true };
+  D.bones.forEach((b) => { const g = new THREE.Group(); g.position.set(...b.pivot); g.userData.rest = g.position.clone(); rig.groups[b.name] = g; });
+  D.bones.forEach((b) => (b.parent >= 0 ? rig.groups[D.bones[b.parent].name] : rig.root).add(rig.groups[b.name]));
+  for (const p of D.parts) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+    g.setAttribute('color', new THREE.BufferAttribute(Float32Array.from(p.col), 3));
+    const m = new THREE.Mesh(g, mat); m.castShadow = m.receiveShadow = true;
+    rig.groups[p.bone].add(m);
+    if (p.pc) rig.team.push({ g, base: Float32Array.from(p.col) });
+  }
+  rig.tris = D.parts.reduce((a, p) => a + p.pos.length / 9, 0);
+  return rig;
+}
+
+// ---- new villagers: bones, rigid parts on their bones, and the skirt as a skinned mesh (hips + a skirt bone per side)
+function buildNew(D) {
+  const rig = { root: new THREE.Group(), groups: {}, parts: [], variants: [], old: false };
+  const piv = Object.fromEntries(D.bones.map((b) => [b.name, new THREE.Vector3(...b.pivot)]));
+  const boneList = [];
+  for (const b of D.bones) {
+    const bone = new THREE.Bone();
+    bone.position.copy(piv[b.name]).sub(b.parent ? piv[b.parent] : new THREE.Vector3());
+    bone.userData.rest = bone.position.clone();
+    rig.groups[b.name] = bone;
+    boneList.push(bone);
+    (b.parent ? rig.groups[b.parent] : rig.root).add(bone);
+  }
+  rig.root.updateMatrixWorld(true);
+  const skeleton = new THREE.Skeleton(boneList);
+  const index = Object.fromEntries(D.bones.map((b, i) => [b.name, i]));
+  for (const p of D.parts) {
+    const g = new THREE.BufferGeometry();
+    const m = p.masks || {};
+    const skinBones = Object.keys(m).filter((k) => index[k] !== undefined);
+    const skinned = skinBones.length > 0;
+    const pos = Float32Array.from(p.pos);
+    if (skinned) {
+      const o = piv[p.bone];
+      for (let i = 0; i < pos.length; i += 3) { pos[i] += o.x; pos[i + 1] += o.y; pos[i + 2] += o.z; }
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(p.ao.length * 3), 3));
+    g.setIndex(p.idx);
+    let mesh;
+    if (skinned) {
+      const n = p.ao.length, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        let rest = 1;
+        si[i * 4] = index[p.bone];
+        skinBones.slice(0, 3).forEach((bn, j) => {
+          const w = m[bn][i];
+          si[i * 4 + 1 + j] = index[bn];
+          sw[i * 4 + 1 + j] = w;
+          rest -= w;
+        });
+        sw[i * 4] = rest;
+      }
+      g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+      mesh = new THREE.SkinnedMesh(g, mat);
+      rig.root.add(mesh);
+      mesh.bind(skeleton, new THREE.Matrix4());
+    } else {
+      mesh = new THREE.Mesh(g, mat);
+      rig.groups[p.bone].add(mesh);
+    }
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    rig.parts.push({ g, p, mesh });
+  }
+  rig.tris = D.parts.filter((p) => !p.variant).reduce((a, p) => a + p.idx.length / 3, 0);
+  return rig;
+}
+const oldRigs = { m: buildOld(OLD.m), f: buildOld(OLD.f) };
+const newRigs = { m: { full: buildNew(NEW.m.full), light: buildNew(NEW.m.light) }, f: { full: buildNew(NEW.f.full), light: buildNew(NEW.f.light) } };
+const allRigs = [oldRigs.m, oldRigs.f, newRigs.m.full, newRigs.m.light, newRigs.f.full, newRigs.f.light];
+for (const r of allRigs) scene.add(r.root);
+const fmt = (n) => Math.round(n).toLocaleString('en-US');
+document.getElementById('old-tris').textContent = fmt(oldRigs.m.tris);
+document.getElementById('new-tris').textContent = `${fmt(newRigs.m.full.tris)} (man) / ${fmt(newRigs.f.full.tris)} (woman)`;
+document.getElementById('light-tris').textContent = `${fmt(newRigs.m.light.tris)} / ${fmt(newRigs.f.light.tris)}`;
+
+const posers = { m: makeHumanPose(THREE, NEW.m.full.bones), f: makeHumanPose(THREE, NEW.f.full.bones) };
+
+function colorize() {
+  const team = dye(TEAMS[state.team].hex);
+  for (const r of [oldRigs.m, oldRigs.f]) for (const { g, base } of r.team) {
+    const col = g.getAttribute('color');
+    for (let i = 0; i < col.count; i++) col.setXYZ(i, base[i * 3] * team.r, base[i * 3 + 1] * team.g, base[i * 3 + 2] * team.b);
+    col.needsUpdate = true;
+  }
+  const c = new THREE.Color(), hair = lin(HAIR), beard = lin(BEARD);
+  const kit = Object.fromEntries(Object.entries(KIT).map(([k, v]) => [k, lin(v)]));
+  kit.team = team;
+  for (const r of allRigs) if (!r.old) for (const { g, p } of r.parts) {
+    const col = g.getAttribute('color'), m = p.masks || {};
+    for (let i = 0; i < p.ao.length; i++) {
+      c.copy(kit[p.mat] || kit.leather);
+      if (m.hair) c.lerp(hair, m.hair[i]);
+      if (m.beard) c.lerp(beard, m.beard[i]);
+      const k = 0.26 + 0.74 * Math.pow(p.ao[i], 1.2);
+      col.setXYZ(i, c.r * k, c.g * k, c.b * k);
+    }
+    col.needsUpdate = true;
+  }
+}
+function showVariants(r) {
+  for (const { p, mesh } of r.parts) {
+    if (!p.variant) continue;
+    mesh.visible = p.variant === 'tool:' + state.tool && state.carry === 'none' || p.variant === 'carry:' + state.carry;
+  }
+}
+
+// ---- poses
+function applyPose(r, pose) {
+  for (const [name, grp] of Object.entries(r.groups)) {
+    const p = pose[name];
+    if (p && p.q) grp.quaternion.fromArray(p.q);
+    else grp.rotation.set(p ? p.rx || 0 : 0, 0, p ? p.rz || 0 : 0);
+    grp.position.copy(grp.userData.rest);
+    if (p && p.p) { grp.position.x += p.p[0]; grp.position.y += p.p[1]; grp.position.z += p.p[2]; }
+    if (p && p.py) grp.position.y += p.py;
+  }
+}
+/** Today's villager, as the game animates it: stiff legs swinging from the hip. */
+function oldPose(t) {
+  if (state.anim !== 'walk') return {};
+  const ph = t * Math.max(1.2, 0.8 * 2.4) * Math.PI * 2 * 0.5, sw = Math.sin(ph) * 0.55;
+  const arm = Math.sin(ph) * 0.35;
+  return { legL: { rx: sw }, legR: { rx: -sw }, hips: { py: Math.abs(Math.cos(ph)) * 0.025 }, armL: { rx: -arm }, armR: { rx: arm * 0.6 } };
+}
+
+// ---- layout and cameras
+const RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
+const tagBox = document.getElementById('tags');
+let shown = [];
+function layout() {
+  for (const r of allRigs) r.root.visible = false;
+  tagBox.textContent = '';
+  const side = state.view === 'side';
+  let list;
+  if (state.cmp === 'old' && !side) list = [[oldRigs.m, 'Man, now'], [newRigs.m.light, 'Man, new'], [oldRigs.f, 'Woman, now'], [newRigs.f.light, 'Woman, new']];
+  else if (state.cmp === 'lod' && !side) list = [[newRigs.m.full, 'Man, full'], [newRigs.m.light, 'Man, light'], [newRigs.f.full, 'Woman, full'], [newRigs.f.light, 'Woman, light']];
+  else list = [[newRigs.m.light, 'Man'], [newRigs.f.light, 'Woman']];
+  shown = list.map(([r, label], i) => {
+    r.root.visible = true;
+    const along = (i - (list.length - 1) / 2) * 0.62;
+    if (side) r.root.position.set(0, 0, along * 1.6);
+    else r.root.position.copy(RIGHT).multiplyScalar(along);
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = label;
+    tagBox.appendChild(el);
+    return { r, el };
+  });
+}
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const pcam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+const target = new THREE.Vector3(0, 0.45, 0);
+const orbit = { yaw: Math.PI / 4, pitch: 0.35, dist: 4 };
+let zoomScale = 1;
+function layoutCamera() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  const side = state.view === 'side';
+  const n = shown.length;
+  const zoom = state.size === 'game' ? 62 : Math.min(w / (n * 0.62 + 0.8), h / 1.35) * zoomScale;
+  cam.left = -w / 2 / zoom; cam.right = w / 2 / zoom; cam.top = h / 2 / zoom; cam.bottom = -h / 2 / zoom;
+  const d = side ? new THREE.Vector3(1, 0.06, 0).normalize()
+    : new THREE.Vector3(Math.cos(Math.PI / 6) * Math.SQRT1_2, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6) * Math.SQRT1_2);
+  cam.position.copy(target).addScaledVector(d, 20);
+  cam.lookAt(target);
+  cam.updateProjectionMatrix();
+  pcam.aspect = w / h;
+  pcam.updateProjectionMatrix();
+}
+const pointers = new Map();
+let pinch0 = 0;
+canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); } });
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1 && Math.abs(dx) + Math.abs(dy) > 0) {
+    if (state.view !== 'orbit') setState({ view: 'orbit' });
+    orbit.yaw -= dx * 0.008; orbit.pitch = Math.min(1.35, Math.max(0.05, orbit.pitch + dy * 0.006));
+  } else if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0 > 0) zoomBy(pinch0 / d); pinch0 = d; }
+});
+const release = (e) => { pointers.delete(e.pointerId); pinch0 = 0; };
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+function zoomBy(f) { if (state.view === 'orbit') orbit.dist = Math.min(10, Math.max(0.8, orbit.dist * f)); else if (state.size === 'close') { zoomScale = Math.min(4, Math.max(0.4, zoomScale / f)); layoutCamera(); } }
+
+// ---- controls
+TEAMS.forEach((t, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.dataset.team = String(i);
+  b.innerHTML = `<span class="swatch" style="background:#${t.hex.toString(16).padStart(6, '0')}"></span>${t.name}`;
+  document.getElementById('teams').appendChild(b);
+});
+function setState(patch) { Object.assign(state, patch); save(); sync(); }
+function sync() {
+  for (const k of ['anim', 'carry', 'tool', 'rate', 'cmp', 'view', 'size', 'team']) {
+    document.querySelectorAll(`[data-${k}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[k] === String(state[k]))));
+  }
+  document.querySelectorAll('[data-tool]').forEach((b) => { b.disabled = state.carry !== 'none'; });
+  document.querySelectorAll('[data-size]').forEach((b) => { b.disabled = state.view === 'orbit'; });
+  for (const r of allRigs) if (!r.old) showVariants(r);
+  colorize();
+  layout();
+  layoutCamera();
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  const d = b.dataset;
+  if (d.anim) setState({ anim: d.anim });
+  else if (d.carry) setState({ carry: d.carry });
+  else if (d.tool) setState({ tool: d.tool });
+  else if (d.rate !== undefined) setState({ rate: Number(d.rate) });
+  else if (d.cmp) setState({ cmp: d.cmp });
+  else if (d.view) setState({ view: d.view });
+  else if (d.size) { zoomScale = 1; setState({ size: d.size }); }
+  else if (d.team) setState({ team: Number(d.team) });
+});
+new ResizeObserver(layoutCamera).observe(stage);
+
+// ---- loop
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduced && state.rate !== 0) state.rate = 0.25;
+let clock = 0, last = performance.now(), groundZ = 0;
+const tmp = new THREE.Vector3();
+function poseAll(t) {
+  const carry = state.carry !== 'none';
+  for (const k of ['m', 'f']) {
+    const pose = posers[k].pose(state.anim, t, carry);
+    applyPose(newRigs[k].full, pose);
+    applyPose(newRigs[k].light, pose);
+    applyPose(oldRigs[k], oldPose(t));
+  }
+}
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  clock += dt * state.rate;
+  if (state.anim === 'walk') groundZ -= posers.m.WALK.speed * dt * state.rate;
+  poseAll(clock);
+  groundTex.offset.set(0, (((groundZ / 4) % 1) + 1) % 1);
+  let c = cam;
+  if (state.view === 'orbit') {
+    const cp = Math.cos(orbit.pitch);
+    pcam.position.set(target.x + Math.sin(orbit.yaw) * cp * orbit.dist, target.y + Math.sin(orbit.pitch) * orbit.dist, target.z + Math.cos(orbit.yaw) * cp * orbit.dist);
+    pcam.lookAt(target);
+    c = pcam;
+  }
+  renderer.render(scene, c);
+  for (const { r, el } of shown) {
+    tmp.copy(r.root.position).project(c);
+    el.style.left = ((tmp.x + 1) / 2) * stage.clientWidth + 'px';
+    el.style.top = ((1 - tmp.y) / 2) * stage.clientHeight + 'px';
+    el.hidden = state.view === 'side' || tmp.z > 1;
+  }
+  requestAnimationFrame(frame);
+}
+sync();
+requestAnimationFrame(frame);
+
+window.__filmstrip = (n = 8, w = 360, h = 300, view = 'side', half = 0.55, cy = 0.45, cz = 0, span = 1 / posers.m.WALK.freq, start = 0, anim = 'walk', carry = 'none', cmp = 'off') => {
+  const saved = { ...state };
+  Object.assign(state, { view, cmp, size: 'close', anim, carry, tool: 'none' });
+  sync();
+  const out = document.createElement('canvas'); out.width = w * n; out.height = h;
+  const ctx = out.getContext('2d');
+  renderer.setSize(w, h, false);
+  const aspect = w / h;
+  cam.left = -half * aspect + cz; cam.right = half * aspect + cz; cam.top = half + cy - target.y; cam.bottom = -half + cy - target.y;
+  cam.updateProjectionMatrix();
+  for (let i = 0; i < n; i++) {
+    const t = start + (i / n) * span;
+    poseAll(t);
+    groundTex.offset.set(0, ((((-posers.m.WALK.speed * t) / 4) % 1) + 1) % 1);
+    renderer.render(scene, cam);
+    ctx.drawImage(renderer.domElement, i * w, 0, w, h);
+    ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.fillText(`${Math.round((i / n) * 100)}%`, i * w + 8, 18);
+  }
+  Object.assign(state, saved);
+  sync();
+  return out.toDataURL('image/png');
+};
+window.__ready = true;
+</script>
