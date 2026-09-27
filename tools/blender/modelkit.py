@@ -130,7 +130,7 @@ class Part:
                 pass
         return self
 
-    def ribbon(self, points, normals, width, thickness, closed=False, bottom=False):
+    def ribbon(self, points, normals, width, thickness, closed=False, bottom=False, top_only=False):
         """
         A flat strap along a polyline lying on a surface: `normals` point away from the surface; the strap's width
         runs across the path within the surface, and it is `thickness` thick (a closed box section).
@@ -153,9 +153,11 @@ class Part:
             for k in range(4):
                 if k == 0 and not bottom:
                     continue   # the underside lies on the surface and is never seen
+                if top_only and k != 2:
+                    continue   # a single band: its thin edges vanish at small sizes anyway
                 k2 = (k + 1) % 4
                 faces.append((i * 4 + k, j * 4 + k, j * 4 + k2, i * 4 + k2))
-        if not closed:
+        if not closed and not top_only:
             faces.append((0, 3, 2, 1))
             last = (n - 1) * 4
             faces.append((last, last + 1, last + 2, last + 3))
@@ -413,10 +415,52 @@ def object_from_export(path, part_names=None, name='import'):
 
 
 class Surface:
-    """Ray-casting helper against a mesh object, in game coordinates."""
+    """Ray-casting helper against one or more mesh objects, in game coordinates."""
 
-    def __init__(self, obj):
-        self.tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
+    def __init__(self, *objs):
+        verts, polys = [], []
+        for o in objs:
+            base = len(verts)
+            mw = o.matrix_world
+            verts.extend(mw @ v.co for v in o.data.vertices)
+            polys.extend([base + i for i in p.vertices] for p in o.data.polygons)
+        self.tree = BVHTree.FromPolygons(verts, polys)
+
+    def signed_distance(self, p):
+        """Distance to the surface, negative inside (by the nearest face's normal)."""
+        loc, nrm, _, dist = self.tree.find_nearest(g2b(p))
+        if loc is None:
+            return 1.0, None
+        sign = 1 if (g2b(p) - loc).dot(nrm) >= 0 else -1
+        return sign * dist, Vector(b2g(nrm))
+
+    def push_out(self, obj, gap, only=None):
+        """Moves vertices of obj that are inside the surface, or nearer than `gap`, out along the normal.
+        `only(p)` can restrict it to some vertices. Returns (vertices inside before, deepest penetration)."""
+        inside, deepest = 0, 0.0
+        for v in obj.data.vertices:
+            p = b2g(v.co)
+            if only and not only(p):
+                continue
+            d, n = self.signed_distance(p)
+            if n is None or d >= gap:
+                continue
+            if d < 0:
+                inside += 1
+                deepest = max(deepest, -d)
+            v.co = v.co + g2b(n) * (gap - d)
+        obj.data.update()
+        return inside, deepest
+
+    def report(self, obj, gap=0.0):
+        """(vertices closer than gap / inside, deepest penetration) without changing anything."""
+        inside, deepest = 0, 0.0
+        for v in obj.data.vertices:
+            d, n = self.signed_distance(b2g(v.co))
+            if n is not None and d < gap:
+                inside += 1
+                deepest = max(deepest, -d)
+        return inside, deepest
 
     def cast(self, origin, direction, dist=5.0):
         hit, nrm, _, _ = self.tree.ray_cast(g2b(origin), g2b(direction).normalized(), dist)

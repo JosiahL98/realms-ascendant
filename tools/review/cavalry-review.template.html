@@ -107,7 +107,7 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval</span>
+    <span class="status">Awaiting your approval · version 2</span>
     <h1>The Cavalryman</h1>
     <p class="lede">A new rider and saddle for the scout, built in Blender like the horse and fitted to it. He sits on the approved light horse, next to the scout your stables train today. Nothing has been put into the game yet.</p>
   </header>
@@ -203,6 +203,17 @@
       </dl>
     </div>
   </div>
+
+  <section class="notes">
+    <h2>Latest changes</h2>
+    <ul>
+      <li>A new face: the nose now grows from between the eyes with a proper bridge and tip, and the brow, cheekbones and chin were rebuilt around the skull.</li>
+      <li>A shorter neck. The head sits lower on the shoulders and leans slightly forward, and the collar rises to meet it.</li>
+      <li>The spear no longer passes through his arm. His fist grips the shaft to the outside of the forearm, the shaft behind the grip is shorter, and a levelled spear angles slightly across the horse's neck, as riders held it. I measured at least 12 mm of clearance between spear and arm through the whole thrust.</li>
+      <li>No more tack sinking into the horse. Every strap is laid densely along the horse's surface and pushed out of it (and out of the mane and tail) wherever it dipped in. The rider's legs and tunic are kept clear of the saddle and horse the same way.</li>
+      <li>The saddle's front horns moved forward so they sit in front of his thighs instead of inside them, and the pommel is narrower so it fits between his legs.</li>
+    </ul>
+  </section>
 
   <section class="notes">
     <h2>About this rider</h2>
@@ -542,8 +553,9 @@ function riderPose(t) {
   const elbow = lerp(0, -1.0, wind) + 0.8 * thrust * wind - 0.25 * thrust;
   out.rarmR = { rx: arm, rz: -0.2 * wind };
   out.relbowR = { rx: elbow };
-  // keep the spear level and pointing forward, tip slightly down, while it is lowered
-  out.rhandR = { rx: level * (1.66 - arm - elbow) };
+  // keep the spear level and pointing forward, tip slightly down, while it is lowered; angled a little across the
+  // horse's neck, so the shaft behind the fist swings outward, clear of the forearm
+  out.rhandR = { rx: level * (1.66 - arm - elbow), rz: -0.3 * level };
   // wind: right shoulder back (negative twist); thrust: right shoulder forward; the head keeps facing the target
   const twist = -0.35 * wind + 0.3 * thrust;
   out.rtorso = { rx: out.rtorso.rx - 0.1 * thrust, ry: twist };
@@ -756,10 +768,18 @@ sync();
 requestAnimationFrame(frame);
 
 // frame-by-frame check used while building this page: n poses laid out in a row
-window.__filmstrip = (n = 8, w = 360, h = 300, view = 'game', half = 0.7, cy = 0.35, cz = 0, span = ATTACK_PERIOD) => {
+window.__filmstrip = (n = 8, w = 360, h = 300, view = 'game', half = 0.7, cy = 0.35, cz = 0, span = ATTACK_PERIOD, start = 0) => {
   const saved = { ...state };
-  Object.assign(state, { view, cmp: 'off', size: 'close' });
+  // 'right' and 'rightfront' look at the rider's spear side, which the game camera does not face
+  const special = view === 'right' || view === 'rightfront' || view === 'righttop';
+  Object.assign(state, { view: special ? 'game' : view, cmp: 'off', size: 'close' });
   sync();
+  if (special) {
+    const d = (view === 'right' ? new THREE.Vector3(-1, 0.15, 0.05) : view === 'righttop' ? new THREE.Vector3(-0.35, 1, -0.15)
+      : new THREE.Vector3(-0.8, 0.25, 0.7)).normalize();
+    gameCam.position.copy(target).addScaledVector(d, 20);
+    gameCam.lookAt(target);
+  }
   const out = document.createElement('canvas');
   out.width = w * n;
   out.height = h;
@@ -769,16 +789,43 @@ window.__filmstrip = (n = 8, w = 360, h = 300, view = 'game', half = 0.7, cy = 0
   gameCam.left = -half * aspect + cz; gameCam.right = half * aspect + cz; gameCam.top = half + cy; gameCam.bottom = -half + cy;
   gameCam.updateProjectionMatrix();
   for (let i = 0; i < n; i++) {
-    poseAt((i / n) * span);
+    poseAt(start + (i / n) * span);
     renderer.render(scene, gameCam);
     ctx.drawImage(renderer.domElement, i * w, 0, w, h);
     ctx.fillStyle = '#fff';
     ctx.font = '14px sans-serif';
-    ctx.fillText(`${Math.round((i / n) * 100)}%`, i * w + 8, 18);
+    ctx.fillText(`${Math.round(((start + (i / n) * span) / ATTACK_PERIOD) * 100)}%`, i * w + 8, 18);
   }
   Object.assign(state, saved);
   sync();
   return out.toDataURL('image/png');
+};
+// geometry probe used while building this page: world positions of spear and arm points at time t
+window.__probe = (t, detail = 'light') => {
+  poseAt(t);
+  const rig = rigs[detail];
+  rig.root.updateMatrixWorld(true);
+  const bone = (n) => RIDER[detail].bones.find((b) => b.name === n).pivot;
+  const at = (grp, abs) => {
+    const pv = bone(grp);
+    return rig.groups[grp].localToWorld(new THREE.Vector3(abs[0] - pv[0], abs[1] - pv[1], abs[2] - pv[2])).sub(rig.root.position);
+  };
+  // spear shaft points in the hand's frame, from the rider export
+  const shaft = RIDER[detail].parts.find((p) => p.name === 'spearshaft');
+  const pv = bone('rhandR');
+  let lo = null, hi = null;
+  for (let i = 0; i < shaft.pos.length; i += 3) {
+    const y = shaft.pos[i + 1];
+    if (!lo || y < lo[1]) lo = [shaft.pos[i], y, shaft.pos[i + 2]];
+    if (!hi || y > hi[1]) hi = [shaft.pos[i], y, shaft.pos[i + 2]];
+  }
+  const toAbs = (q) => [q[0] + pv[0], q[1] + pv[1], q[2] + pv[2]];
+  return {
+    shoulder: at('rarmR', bone('rarmR')), elbow: at('relbowR', bone('relbowR')), wrist: at('rhandR', bone('rhandR')),
+    shoulderL: at('rarmL', bone('rarmL')), elbowL: at('relbowL', bone('relbowL')), wristL: at('rhandL', bone('rhandL')),
+    neckR: at('rhead', bone('rhead')),
+    butt: at('rhandR', toAbs(lo)), tip: at('rhandR', toAbs(hi)),
+  };
 };
 window.__ready = true;
 </script>
