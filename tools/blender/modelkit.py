@@ -64,7 +64,9 @@ def _apply(obj, mod_type, **props):
 class Part:
     """A named piece of a model: the bone it follows, its material key, and the primitives it is made of."""
 
-    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400, smooth_factor=0.5, remesh=True):
+    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400, smooth_factor=0.5, remesh=True, symmetric=False):
+        #: symmetric=True keeps the +x half and mirrors it, so the part is exactly symmetric (faces, bodies)
+        self.symmetric = symmetric
         #: remesh=False keeps the geometry as given (thin straps, cloth shells) instead of fusing it into a volume
         self.remesh = remesh
         self.name = name
@@ -217,10 +219,19 @@ class Part:
             bpy.data.objects.remove(cutter)
         if self.smooth:
             _apply(obj, 'SMOOTH', factor=self.smooth_factor, iterations=self.smooth)
+        if self.symmetric:
+            bm = bmesh.new()
+            bm.from_mesh(obj.data)
+            bmesh.ops.bisect_plane(bm, geom=bm.verts[:] + bm.edges[:] + bm.faces[:], dist=1e-6,
+                                   plane_co=(0, 0, 0), plane_no=(1, 0, 0), clear_inner=True)
+            bm.to_mesh(obj.data)
+            bm.free()
+            _apply(obj, 'MIRROR', use_mirror_merge=True, merge_threshold=0.0004, use_clip=True)
         tri_count = sum(len(p.vertices) - 2 for p in obj.data.polygons)
         budget = max(24, int(self.tris * TRI_SCALE))
         if tri_count > budget:
-            _apply(obj, 'DECIMATE', decimate_type='COLLAPSE', ratio=budget / tri_count, use_collapse_triangulate=True)
+            _apply(obj, 'DECIMATE', decimate_type='COLLAPSE', ratio=budget / tri_count, use_collapse_triangulate=True,
+                   use_symmetry=self.symmetric, symmetry_axis='X')
         obj.data.shade_smooth()
         obj['bone'] = self.bone
         obj['mat'] = self.mat

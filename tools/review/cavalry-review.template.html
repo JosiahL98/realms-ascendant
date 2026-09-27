@@ -107,7 +107,7 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval · version 4</span>
+    <span class="status">Awaiting your approval · version 5</span>
     <h1>The Cavalryman</h1>
     <p class="lede">A new rider and saddle for the scout, built in Blender like the horse and fitted to it. He sits on the approved light horse, next to the scout your stables train today. Nothing has been put into the game yet.</p>
   </header>
@@ -198,8 +198,8 @@
       <h2>New</h2>
       <dl class="stats">
         <dt>Triangles</dt><dd><span id="new-tris">–</span> in full detail, <span id="light-tris">–</span> in the light version (rider and tack)</dd>
-        <dt>Rider</dt><dd>a smooth head with painted hair under a leather cap; tunic in your colour under a leather cuirass; elbows and wrists that bend; fists that grip the spear and reins; legs shaped around the horse</dd>
-        <dt>Tack</dt><dd>four-horned saddle on a saddle cloth in your colour, girth, breast collar with a bronze pendant, crupper, bridle and reins</dd>
+        <dt>Rider</dt><dd>a smooth head with painted hair under a leather cap; tunic in your colour under a leather cuirass; arms in human proportion, with elbows and wrists that bend; the right fist grips the spear, the left hand rests on the saddle; legs shaped around the horse</dd>
+        <dt>Tack</dt><dd>four-horned saddle on a saddle cloth in your colour, girth, breast collar with a bronze pendant, crupper and bridle</dd>
       </dl>
     </div>
   </div>
@@ -207,12 +207,11 @@
   <section class="notes">
     <h2>Latest changes</h2>
     <ul>
-      <li>The attack is simpler. He holds the spear tip up, lowers the point to level, draws back and thrusts forward. His hand stays on the shaft the whole time, within his arm's reach.</li>
-      <li>A plain, smooth human head with a clear profile of brow, nose, jaw and chin, without fussy features.</li>
-      <li>The hair is painted onto the head rather than being a separate shell, so hair and head can't blend into each other.</li>
-      <li>The saddle's front horns and flaps were moved so they no longer pierce his thighs and tunic. The seat now gives slightly under him.</li>
-      <li>The breast collar runs back along both sides and tucks under the saddle cloth, and the girth sits under the cloth too, so no strap ends in mid-air.</li>
-      <li>Checked by measurement: at 90 moments through the attack, neither the spear nor his arm touches anything else. The closest gap is 3 mm. No saddle, leg or tunic points are inside one another.</li>
+      <li>No reins. His left hand rests on the saddle's left front horn and turns with his body.</li>
+      <li>A thrust a real arm can make. He holds the spear low at his hip with the elbow out and down, draws back, then drives forward, straightening the arm as the shoulder turns into it. The wrist bends to keep the shaft under the forearm, as a real wrist does. Elbows only ever point down and outward.</li>
+      <li>Arms in human proportion. They were too short to reach the saddle; now they are about as long as a seated man's.</li>
+      <li>A symmetrical face. The head is modelled as one half and mirrored, and the simplification keeps it symmetric, so both sides always match, even in the light version.</li>
+      <li>Measured at 90 moments through the attack in both versions: the spear clears everything, and neither arm passes through his body, legs, saddle or the horse. The only contact is a millimetre where the arm meets the armpit, as on anyone.</li>
     </ul>
   </section>
 
@@ -220,7 +219,7 @@
     <h2>About this rider</h2>
     <ul>
       <li>The saddle is the four-horned kind that cavalry of this era rode. The horns hold the rider in place, because stirrups hadn't been invented yet, so his legs hang free against the horse's sides.</li>
-      <li>The saddle cloth, straps and bridle were laid onto the horse's surface in Blender, so they follow its shape. The bridle and reins bend with the horse's neck when it nods or grazes.</li>
+      <li>The saddle cloth, straps and bridle were laid onto the horse's surface in Blender, so they follow its shape. The bridle bends with the horse's neck when it nods or grazes.</li>
       <li>Shoulders, elbows and wrists are ball joints: each part ends in a sphere centred on the joint, so nothing opens up or bulges when the arms move.</li>
       <li>The tunic and saddle cloth take the player's colour, as today's scout does. Try the colours above.</li>
     </ul>
@@ -391,7 +390,7 @@ for (const p of OLD.parts) {
   }
 }
 
-// ---- skinned joints of the new horse (neck and upper legs); the bridle and reins use the neck weight too
+// ---- skinned joints of the new horse (neck and upper legs); the bridle uses the neck weight too
 const SKIN_BONES = ['neck', 'legFL', 'legFR', 'legBL', 'legBR'];
 const hb = (n) => new THREE.Vector3(...HORSE.full.bones.find((b) => b.name === n).pivot);
 const skinUniforms = {

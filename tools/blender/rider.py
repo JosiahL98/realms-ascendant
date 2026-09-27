@@ -7,7 +7,7 @@ the rider's legs are pushed clear of its barrel. Coordinates are the horse's own
 
 Rider bones hang off the horse's 'body' bone and keep the game's names (rhips, rtorso, rhead, rarmL/R, rhandL/R) with
 elbow bones added (relbowL/R). Joints are ball joints: each segment ends in a sphere centred on its pivot, so turning
-never opens a gap. Tack sits on the 'body' bone; the bridle and reins carry the horse's 'neck' skin weight so they
+never opens a gap. Tack sits on the 'body' bone; the bridle carries the horse's 'neck' skin weight so they
 bend with its neck.
 
 Materials (the renderer colours them): skin, hair, eye, team (player colour: tunic, sleeves, saddle cloth), leather,
@@ -51,10 +51,29 @@ H = V((0.0, 0.9, -0.04))          # hips (pelvis centre, on the saddle)
 T = V((0.0, 0.93, -0.045))        # torso pivot (small of the back)
 HEAD = V((0.0, 1.2, -0.05))       # neck base
 SH = {1: V((0.108, 1.162, -0.045)), -1: V((-0.108, 1.162, -0.045))}   # shoulders
-EL = {1: V((0.132, 1.03, -0.005)), -1: V((-0.16, 1.03, -0.02))}       # elbows
-WR = {1: V((0.074, 0.978, 0.098)), -1: V((-0.19, 0.99, 0.085))}       # wrists
-FIST = {1: V((0.064, 0.97, 0.122)), -1: V((-0.205, 0.978, 0.117))}
-GRIP = FIST[-1]                   # where the right fist closes on the spear
+L_UPPER, L_FORE = 0.175, 0.15      # human proportions: seated, the hands reach the saddle
+
+
+def elbow_ik(sh, wr, pole):
+    """Elbow for a shoulder and wrist, bending towards `pole`."""
+    to_w = wr - sh
+    d = min(to_w.length, L_UPPER + L_FORE - 1e-4)
+    u = to_w.normalized()
+    a = (L_UPPER ** 2 - L_FORE ** 2 + d * d) / (2 * d)
+    h = math.sqrt(max(0.0, L_UPPER ** 2 - a * a))
+    v = (V(pole) - u * V(pole).dot(u)).normalized()
+    return sh + u * a + v * h
+
+
+SEAT_Y = S.cast((0, 2.0, -0.04), (0, -1, 0))[0].y + 0.03    # top of the saddle seat (see saddle below)
+# right hand: holds the spear upright at his side; the fist sits just ahead of the wrist
+GRIP = V((-0.235, 0.985, 0.13))                 # where the right fist closes on the spear
+WR = {-1: GRIP - V((-0.01, 0.01, 0.035))}
+# left hand: rests on the saddle's left front horn, palm down, clear of his lap
+PALM = V((0.045, SEAT_Y + 0.062, 0.14))
+WR[1] = PALM + V((0.022, 0.016, -0.04))
+EL = {-1: elbow_ik(SH[-1], WR[-1], (-0.6, -1, -0.35)), 1: elbow_ik(SH[1], WR[1], (1, -0.12, -0.25))}   # right pole = HOLD_POLE in rider-pose.cjs
+FIST = {-1: GRIP, 1: PALM}
 
 horse_bones = {b['name']: b for b in horse['bones']}
 BONES = [
@@ -230,7 +249,7 @@ for r in (0, rows - 1):
 parts.append(trim.build())
 
 # ------------------------------------------------------------------------------------------------ saddle (four horns)
-saddle = mk.Part('saddle', 'body', 'leather', voxel=0.0028, smooth=4, tris=520)
+saddle = mk.Part('saddle', 'body', 'leather', voxel=0.0028, smooth=4, tris=520, symmetric=True)
 srows = 9
 sgrid, snrm = draped(-0.15, 0.025, srows, lambda z: 0.755, 0.012, top_half=0.06, n_top=5, n_side=5)   # flaps end behind the thighs
 saddle.mesh(*shell(sgrid, snrm, 0.018))
@@ -405,19 +424,6 @@ for s in (1, -1):
 bits.mask('neck', lambda p, n: neck_weight(p))
 parts.append(bits.build())
 
-reins = mk.Part('reins', 'body', 'darkleather', remesh=False)
-for s in (1, -1):
-    a, b, c = BIT[s] + V((0, 0.0, -0.01)), V((0.075 * s, 1.0, 0.45)), FIST[1] + V((0.0, 0.005 * s, 0.0))
-    pts = []
-    for i in range(24):
-        t = i / 23
-        q = a * (1 - t) ** 2 + b * 2 * t * (1 - t) + c * t * t
-        q.y -= 0.02 * math.sin(math.pi * t)   # a little slack
-        pts.append(q)
-    rp, _ = settle(pts, 0.006, step=STRAP_STEP * 1.6)
-    reins.tube(rp, 0.0035, seg=3 if LIGHT else 4)
-reins.mask('neck', lambda p, n: neck_weight(p))
-parts.append(reins.build())
 
 
 # ------------------------------------------------------------------------------------------------ rider: legs
@@ -435,8 +441,8 @@ def leg_path(s):
     return hip, knee, shin_mid, ankle, toe
 
 
-legs = mk.Part('legs', 'rhips', 'trousers', voxel=0.0026, smooth=5, tris=620)
-boots = mk.Part('boots', 'rhips', 'darkleather', voxel=0.0024, smooth=4, tris=220)
+legs = mk.Part('legs', 'rhips', 'trousers', voxel=0.0026, smooth=5, tris=620, symmetric=True)
+boots = mk.Part('boots', 'rhips', 'darkleather', voxel=0.0024, smooth=4, tris=220, symmetric=True)
 for s in (1, -1):
     hip, knee, shin_mid, ankle, toe = leg_path(s)
     legs.ball(hip, 0.053)
@@ -455,7 +461,7 @@ for s in (1, -1):
 parts.append(legs.build())
 parts.append(boots.build())
 
-skirt = mk.Part('skirt', 'rhips', 'team', voxel=0.0026, smooth=5, tris=300)
+skirt = mk.Part('skirt', 'rhips', 'team', voxel=0.0026, smooth=5, tris=300, symmetric=True)
 skirt.ellipsoid((0, 0.935, -0.045), (0.094, 0.05, 0.078))                                       # waist
 skirt.ellipsoid((0, 0.9, -0.095), (0.096, 0.036, 0.048))                                        # back hem over the saddle
 for s in (1, -1):
@@ -463,7 +469,7 @@ for s in (1, -1):
     skirt.limb(hip + V((0, 0.012, -0.004)), hip.lerp(knee, 0.34) + V((0, 0.018, -0.006)), 0.058, 0.049, seg=14)  # over the thigh
 parts.append(skirt.build())
 
-belt = mk.Part('belt', 'rhips', 'leather', voxel=0.0024, smooth=3, tris=100)
+belt = mk.Part('belt', 'rhips', 'leather', voxel=0.0024, smooth=3, tris=100, symmetric=True)
 belt.ellipsoid((0, 0.958, -0.045), (0.09, 0.015, 0.074))
 parts.append(belt.build())
 buckle = mk.Part('buckle', 'rhips', 'bronze', voxel=0.002, smooth=2, tris=40)
@@ -471,7 +477,7 @@ buckle.ellipsoid((0, 0.958, 0.03), (0.016, 0.013, 0.006))
 parts.append(buckle.build())
 
 # ------------------------------------------------------------------------------------------------ rider: torso
-torso = mk.Part('torso', 'rtorso', 'team', voxel=0.0026, smooth=6, tris=360)
+torso = mk.Part('torso', 'rtorso', 'team', voxel=0.0026, smooth=6, tris=360, symmetric=True)
 torso.ellipsoid((0, 0.99, -0.045), (0.082, 0.06, 0.063))                                         # abdomen
 torso.ellipsoid((0, 1.085, -0.042), (0.102, 0.082, 0.07))                                       # chest
 torso.ellipsoid((0, 1.15, -0.047), (0.114, 0.042, 0.06))                                        # shoulders
@@ -479,7 +485,7 @@ torso.ellipsoid((0, 1.182, -0.058), (0.078, 0.04, 0.047))                       
 torso.ellipsoid((0, 1.17, -0.025), (0.06, 0.03, 0.045))                                         # collar and upper chest
 parts.append(torso.build())
 
-cuirass = mk.Part('cuirass', 'rtorso', 'leather', voxel=0.0026, smooth=5, tris=340)
+cuirass = mk.Part('cuirass', 'rtorso', 'leather', voxel=0.0026, smooth=5, tris=340, symmetric=True)
 cuirass.ellipsoid((0, 0.995, -0.045), (0.094, 0.07, 0.076))
 cuirass.ellipsoid((0, 1.08, -0.042), (0.113, 0.088, 0.081))
 cuirass.ellipsoid((0, 1.148, -0.047), (0.094, 0.047, 0.068))                                   # upper chest, up to the collar
@@ -490,7 +496,7 @@ parts.append(cuirass.build())
 
 # ------------------------------------------------------------------------------------------------ rider: head
 CR = V((0.0, 1.29, -0.036))       # centre of the skull; the face is built around it
-head = mk.Part('head', 'rhead', 'skin', voxel=0.0017, smooth=8, tris=560)
+head = mk.Part('head', 'rhead', 'skin', voxel=0.0017, smooth=8, tris=900, symmetric=True)   # the face needs its triangles
 head.limb(HEAD + V((0, -0.025, -0.01)), CR + V((0, -0.045, -0.004)), 0.036, 0.032, seg=14)      # neck, leaning forward
 head.ellipsoid(CR, (0.05, 0.055, 0.057))                                                        # cranium
 head.ellipsoid(CR + V((0, -0.03, 0.02)), (0.041, 0.042, 0.042))                                 # face
@@ -511,7 +517,7 @@ def hair_region(p, n):
 head.mask('hair', hair_region)
 parts.append(head.build())
 
-cap = mk.Part('cap', 'rhead', 'leather', voxel=0.002, smooth=4, tris=180)
+cap = mk.Part('cap', 'rhead', 'leather', voxel=0.002, smooth=4, tris=180, symmetric=True)
 cap.ellipsoid(CR + V((0, 0.03, -0.004)), (0.057, 0.042, 0.062))
 cap.ellipsoid(CR + V((0, 0.014, -0.006)), (0.06, 0.008, 0.064))                                # rim, above the brow
 cap.ellipsoid(CR + V((0, -0.056, -0.004)), (0.09, 0.07, 0.09), cut=True)                       # open underneath
@@ -536,9 +542,17 @@ def arm(s, side):
     bracer.limb(el.lerp(wr, 0.52), wr.lerp(el, 0.06), 0.03, 0.026, seg=12)
     hand = mk.Part(f'hand{side}', f'rhand{side}', 'skin', voxel=0.0018, smooth=3, tris=120)
     hand.ball(wr, 0.023)
-    hand.limb(wr, fist, 0.02, 0.022, seg=10)                                                      # palm
-    hand.ellipsoid(fist, (0.024, 0.028, 0.032))                                                   # fist
-    hand.limb(fist + V((0.012 * s, 0.012, -0.008)), fist + V((0.004 * s, 0.018, 0.02)), 0.009, 0.007, seg=8)   # thumb
+    if s < 0:
+        hand.limb(wr, fist, 0.02, 0.022, seg=10)                                                  # palm
+        hand.ellipsoid(fist, (0.024, 0.028, 0.032))                                               # fist round the spear
+        hand.limb(fist + V((0.012 * s, 0.012, -0.008)), fist + V((0.004 * s, 0.018, 0.02)), 0.009, 0.007, seg=8)   # thumb
+    else:
+        # a relaxed hand lying on the pommel, fingers curling over its front
+        yaw = math.atan2(fist.x - wr.x, fist.z - wr.z)
+        hand.limb(wr, fist, 0.02, 0.018, seg=10, flat=1.3)
+        hand.ellipsoid(fist, (0.026, 0.013, 0.03), rot=(0.25, yaw, 0))
+        hand.ellipsoid(fist + V((-0.004, -0.014, 0.024)), (0.022, 0.014, 0.012), rot=(0.3, yaw, 0))
+        hand.limb(wr + V((-0.015, -0.004, 0.012)), fist + V((-0.022, -0.004, 0.0)), 0.009, 0.007, seg=8)       # thumb
     return up, sleeve, fore, bracer, hand
 
 
@@ -574,7 +588,7 @@ LAYERS = [
     ('cuirass', ['torso'], 0.004), ('sleeveL', ['uparmL'], 0.003), ('sleeveR', ['uparmR'], 0.003),
     ('bracerL', ['forearmL'], 0.003), ('bracerR', ['forearmR'], 0.003), ('boots', ['legs'], 0.003),
     ('skirt', ['legs'], 0.005), ('belt', ['skirt'], 0.002), ('buckle', ['belt'], 0.0015),
-    ('cap', ['head'], 0.005),
+    ('cap', ['head'], 0.008),
 ]
 for outer, inners, gap in LAYERS:
     out_n, in_n = mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
@@ -584,7 +598,7 @@ for outer, inners, gap in LAYERS:
 # Straps laid across hollows dip in at their edges, and the fitted shapes can graze the horse where the surface
 # curves: push anything inside (or closer than a small gap) back out along the surface normal.
 TACK_GAP = {'cloth': 0.005, 'clothtrim': 0.006, 'saddle': 0.006, 'saddlebronze': 0.004, 'straps': 0.003,
-            'pendant': 0.002, 'bridle': 0.0025, 'bits': 0.002, 'reins': 0.004}
+            'pendant': 0.002, 'bridle': 0.0025, 'bits': 0.002}
 for name, gap in TACK_GAP.items():
     inside, deep = CLEAR.push_out(by_name[name], gap)
     after = CLEAR.report(by_name[name])
@@ -692,5 +706,6 @@ if preview_path:
                               ('back', 200.0, 25.0, (0, 1.1, -0.05), 0.34), ('thighL', 60.0, 30.0, (0.1, 0.88, 0.05), 0.26),
                               ('chestF', 15.0, 15.0, (0, 1.1, -0.02), 0.3), ('thighR', -60.0, 30.0, (-0.1, 0.88, 0.05), 0.26),
                               ('headback', 160.0, 20.0, (0, 1.27, -0.04), 0.2), ('headgame', 45.0, 30.0, (0, 1.27, -0.03), 0.2),
+                              ('lefthand', 50.0, 35.0, (0.07, 0.95, 0.08), 0.3),
                               ('breast', 50.0, 20.0, (0.05, 0.7, 0.35), 0.45), ('neckstrap', 90.0, 15.0, (0, 0.78, 0.2), 0.45)))
     print('PREVIEW', paths)
