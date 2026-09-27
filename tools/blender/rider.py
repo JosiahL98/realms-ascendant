@@ -214,7 +214,7 @@ def cloth_hem(z):
 
 
 rows = n_samples(11)
-grid, nrm = draped(cloth_z0, cloth_z1, rows, cloth_hem, 0.004, n_top=n_samples(4), n_side=n_samples(8))
+grid, nrm = draped(cloth_z0, cloth_z1, rows, cloth_hem, 0.007, n_top=n_samples(4), n_side=n_samples(8))
 cloth = mk.Part('cloth', 'body', 'team', remesh=False)
 cloth.mesh(*surface_grid(grid, nrm, 0.006))
 parts.append(cloth.build())
@@ -232,20 +232,20 @@ parts.append(trim.build())
 # ------------------------------------------------------------------------------------------------ saddle (four horns)
 saddle = mk.Part('saddle', 'body', 'leather', voxel=0.0028, smooth=4, tris=520)
 srows = 9
-sgrid, snrm = draped(-0.15, 0.07, srows, lambda z: 0.73, 0.012, top_half=0.06, n_top=5, n_side=5)
+sgrid, snrm = draped(-0.15, 0.025, srows, lambda z: 0.755, 0.012, top_half=0.06, n_top=5, n_side=5)   # flaps end behind the thighs
 saddle.mesh(*shell(sgrid, snrm, 0.018))
 seat_top = top_y(0, -0.04) + 0.03
 saddle.ellipsoid((0, seat_top + 0.01, 0.062), (0.045, 0.02, 0.028))         # pommel, narrow enough to sit between the thighs
 saddle.ellipsoid((0, seat_top + 0.018, -0.14), (0.075, 0.028, 0.028))       # cantle
 for s in (1, -1):
     # front horns curl out over the thighs, rear horns rise behind the rider
-    saddle.limb((0.04 * s, seat_top + 0.016, 0.088), (0.074 * s, seat_top + 0.056, 0.138), 0.015, 0.011, seg=12)
+    saddle.limb((0.032 * s, seat_top + 0.014, 0.1), (0.05 * s, seat_top + 0.05, 0.165), 0.014, 0.01, seg=12)
     saddle.limb((0.045 * s, seat_top + 0.01, -0.125), (0.065 * s, seat_top + 0.06, -0.155), 0.016, 0.01, seg=12)
 parts.append(saddle.build())
 
 bronze = mk.Part('saddlebronze', 'body', 'bronze', voxel=0.0025, smooth=2, tris=120)
 for s in (1, -1):
-    bronze.ball((0.074 * s, seat_top + 0.056, 0.138), 0.012)
+    bronze.ball((0.05 * s, seat_top + 0.05, 0.165), 0.011)
     bronze.ball((0.065 * s, seat_top + 0.06, -0.155), 0.011)
 parts.append(bronze.build())
 
@@ -332,17 +332,30 @@ def thin(pts, nrm, gap, closed, max_len=0.07 if not LIGHT else 0.09, max_turn=0.
 
 straps = mk.Part('straps', 'body', 'darkleather', remesh=False)
 # girth: under the belly behind the elbows, from cloth edge to cloth edge
-gp, _ = ring((0, 0.63, 0.13), (0, 0, 1), (0, 1, 0), 0.6, 70, 290, 40, 0.0)
+gp, _ = ring((0, 0.63, 0.07), (0, 0, 1), (0, 1, 0), 0.6, 50, 310, 40, 0.0)   # under the cloth, ends hidden by it
 straps.ribbon(*settle(gp, 0.003), 0.034, 0.006, top_only=LIGHT)
 # breast collar round the front of the chest, from the saddle's front corners
 bp = []
 for i in range(40):
-    a = math.radians(-78 + 156 * i / 39)
-    y = 0.655 + 0.1 * (abs(a) / math.radians(78)) ** 2
+    a = math.radians(-80 + 160 * i / 39)
+    y = 0.655 + 0.04 * (abs(a) / math.radians(80)) ** 2
     d = V((math.sin(a), 0, math.cos(a)))
     h, n = S.cast(V((0, y, 0.18)) + d * 0.6, -d, 1.2)
     if h is not None:
         bp.append(h)
+# the breast collar runs back along both sides and ends under the saddle cloth
+left, right = (bp[-1], bp[0]) if bp[-1].x > 0 else (bp[0], bp[-1])
+tails = {}
+for end in (left, right):
+    sgn = 1 if end.x > 0 else -1
+    path = []
+    for j in range(1, 13):
+        z = end.z + (0.06 - end.z) * j / 12
+        h, _ = S.cast((sgn * 1.0, end.y, z), (-sgn, 0, 0))
+        if h is not None:
+            path.append(h)
+    tails[sgn] = path
+bp = list(reversed(tails[1] if bp[0].x > 0 else tails[-1])) + bp + (tails[-1] if bp[0].x > 0 else tails[1])
 bp, bn = settle(bp, 0.003)
 straps.ribbon(bp, bn, 0.026, 0.006, top_only=LIGHT)
 # crupper along the spine to the root of the tail
@@ -477,39 +490,26 @@ parts.append(cuirass.build())
 
 # ------------------------------------------------------------------------------------------------ rider: head
 CR = V((0.0, 1.29, -0.036))       # centre of the skull; the face is built around it
-head = mk.Part('head', 'rhead', 'skin', voxel=0.0017, smooth=4, tris=620)
+head = mk.Part('head', 'rhead', 'skin', voxel=0.0017, smooth=8, tris=560)
 head.limb(HEAD + V((0, -0.025, -0.01)), CR + V((0, -0.045, -0.004)), 0.036, 0.032, seg=14)      # neck, leaning forward
-head.ellipsoid(CR, (0.05, 0.054, 0.056))                                                        # skull
-head.ellipsoid(CR + V((0, -0.034, 0.018)), (0.042, 0.036, 0.044))                               # upper jaw / face
-head.ellipsoid(CR + V((0, -0.05, 0.01)), (0.04, 0.026, 0.043))                                 # lower jaw
+head.ellipsoid(CR, (0.05, 0.055, 0.057))                                                        # cranium
+head.ellipsoid(CR + V((0, -0.03, 0.02)), (0.041, 0.042, 0.042))                                 # face
+head.ellipsoid(CR + V((0, -0.052, 0.012)), (0.037, 0.024, 0.04))                                # jaw
+head.ellipsoid(CR + V((0, -0.066, 0.042)), (0.018, 0.014, 0.015))                               # chin
+head.ellipsoid(CR + V((0, -0.022, 0.057)), (0.009, 0.017, 0.012), rot=(0.25, 0, 0))            # nose
 for s_ in (1, -1):
-    head.ellipsoid(CR + V((0.032 * s_, -0.048, -0.004)), (0.012, 0.02, 0.022))                  # angle of the jaw
-head.ellipsoid(CR + V((0, -0.068, 0.044)), (0.02, 0.016, 0.016))                                # chin
-head.ball(CR + V((0, -0.066, 0.054)), 0.011)                                                    # point of the chin
-head.ellipsoid(CR + V((0, 0.003, 0.049)), (0.04, 0.009, 0.01))                                  # brow ridge
-for s_ in (1, -1):
-    head.ellipsoid(CR + V((0.029 * s_, -0.014, 0.043)), (0.016, 0.011, 0.012))                 # cheekbones
     head.ellipsoid(CR + V((0.051 * s_, -0.013, -0.002)), (0.008, 0.017, 0.012))                # ears
-    head.ellipsoid(CR + V((0.018 * s_, -0.01, 0.057)), (0.011, 0.007, 0.008), cut=True)       # eye sockets
-# nose: a bridge rising from between the eyes to a rounded tip, with nostril wings
-head.limb(CR + V((0, -0.005, 0.054)), CR + V((0, -0.032, 0.074)), 0.0065, 0.009, seg=10, flat=0.75)
-head.ball(CR + V((0, -0.033, 0.073)), 0.0095)
-for s_ in (1, -1):
-    head.ellipsoid(CR + V((0.009 * s_, -0.036, 0.066)), (0.007, 0.006, 0.007))
-head.ellipsoid(CR + V((0, -0.052, 0.062)), (0.012, 0.0022, 0.008), cut=True)                   # mouth
+
+
+def hair_region(p, n):
+    back = mk.smoothstep(CR.z + 0.012, CR.z - 0.012, p[2]) * mk.smoothstep(CR.y - 0.054, CR.y - 0.04, p[1])
+    side = (mk.smoothstep(0.036, 0.044, abs(p[0])) * mk.smoothstep(CR.y - 0.032, CR.y - 0.022, p[1])
+            * mk.smoothstep(CR.z + 0.03, CR.z + 0.018, p[2]))
+    return max(back, side)
+
+
+head.mask('hair', hair_region)
 parts.append(head.build())
-
-eyes = mk.Part('reyes', 'rhead', 'eye', voxel=0.0016, smooth=1, tris=50)
-for s_ in (1, -1):
-    eyes.ellipsoid(CR + V((0.018 * s_, -0.01, 0.05)), (0.0065, 0.0055, 0.006))
-parts.append(eyes.build())
-
-hair = mk.Part('hair', 'rhead', 'hair', voxel=0.002, smooth=3, tris=150)
-hair.ellipsoid(CR + V((0, -0.01, -0.019)), (0.053, 0.042, 0.04))                               # back of the head
-for s_ in (1, -1):
-    hair.ellipsoid(CR + V((0.047 * s_, 0.0, 0.019)), (0.009, 0.02, 0.014))                     # sideburns
-hair.ellipsoid(CR + V((0, -0.035, 0.001)), (0.04, 0.04, 0.04), cut=True)                       # keep the nape clear
-parts.append(hair.build())
 
 cap = mk.Part('cap', 'rhead', 'leather', voxel=0.002, smooth=4, tris=180)
 cap.ellipsoid(CR + V((0, 0.03, -0.004)), (0.057, 0.042, 0.062))
@@ -574,7 +574,7 @@ LAYERS = [
     ('cuirass', ['torso'], 0.004), ('sleeveL', ['uparmL'], 0.003), ('sleeveR', ['uparmR'], 0.003),
     ('bracerL', ['forearmL'], 0.003), ('bracerR', ['forearmR'], 0.003), ('boots', ['legs'], 0.003),
     ('skirt', ['legs'], 0.005), ('belt', ['skirt'], 0.002), ('buckle', ['belt'], 0.0015),
-    ('hair', ['head'], 0.002), ('cap', ['head', 'hair'], 0.003),
+    ('cap', ['head'], 0.005),
 ]
 for outer, inners, gap in LAYERS:
     out_n, in_n = mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
@@ -628,6 +628,27 @@ for _ in range(2):
 print('SKIRT inside saddle/horse:', SADDLE_ONLY.report(by_name['skirt'])[0],
       '| legs poking through skirt:', mk.Surface(by_name['skirt']).report(by_name['legs'])[0] if False else 'n/a')
 
+# the saddle seat gives under the rider: press it down out of his seat and thighs (never more than 3 cm)
+for _ in range(3):
+    for garment in ('legs', 'skirt'):
+        mk.Surface(by_name[garment]).push_out(by_name['saddle'], 0.002, max_depth=0.03)
+        mk.Surface(by_name['saddle']).push_out(by_name[garment], 0.001, max_depth=0.03)
+
+# ------------------------------------------------------------------------------------------------ audit
+# Thin parts (saddle horns, cantle) can pierce a garment between its vertices, so test both directions.
+AUDIT = [('saddle', 'legs'), ('saddle', 'skirt'), ('legs', 'saddle'), ('skirt', 'saddle'), ('saddlebronze', 'legs'),
+         ('saddlebronze', 'skirt')]
+for a_, b_ in AUDIT:
+    surf = mk.Surface(by_name[b_])
+    n_in = surf.report(by_name[a_])[0]
+    print(f'AUDIT {a_:<12} vertices inside {b_:<8}: {n_in}')
+    if n_in and os.environ.get('CLEAR_DEBUG'):
+        for v in by_name[a_].data.vertices:
+            q = mk.b2g(v.co)
+            d, _ = surf.signed_distance(q)
+            if d < 0:
+                print(f'    ({q[0]:+.3f}, {q[1]:.3f}, {q[2]:+.3f}) depth {-d * 1000:.1f} mm')
+
 # ------------------------------------------------------------------------------------------------ bake and export
 horse_occluder = mk.object_from_export(horse_path, part_names=['body'], name='horse_occluder')[0]
 ao = mk.bake_ao(parts, dist=0.22, near=0.035, occluders=[horse_occluder])
@@ -640,7 +661,17 @@ if preview_path:
         'leather': (0.25, 0.12, 0.05), 'darkleather': (0.07, 0.04, 0.02), 'trousers': (0.18, 0.11, 0.05),
         'wood': (0.2, 0.1, 0.04), 'iron': (0.45, 0.47, 0.5), 'bronze': (0.55, 0.32, 0.08), 'trim': (0.7, 0.6, 0.35),
     }
-    colors = {o.name: [tuple(c * (0.25 + 0.75 * a ** 1.2) for c in PAL[o['mat']]) for a in ao[o.name]] for o in parts}
+    colors = {}
+    for o in parts:
+        hm = mk.vertex_masks(o).get('hair')
+        cols = []
+        for i, a in enumerate(ao[o.name]):
+            c = PAL[o['mat']]
+            if hm:
+                w = hm[i]
+                c = tuple(c[j] * (1 - w) + PAL['hair'][j] * w for j in range(3))
+            cols.append(tuple(v * (0.25 + 0.75 * a ** 1.2) for v in c))
+        colors[o.name] = cols
     horse_occluder.hide_render = True
     horse_obj.hide_render = False
     # show the horse in the preview in plain bay, without its own AO
@@ -659,5 +690,7 @@ if preview_path:
                               ('chest', 25.0, 8.0, (0.05, 0.68, 0.42), 0.36), ('belly', 80.0, 3.0, (0.05, 0.55, 0.1), 0.45),
                               ('bridle2', 75.0, 12.0, (0, 0.96, 0.66), 0.3), ('crupper', 120.0, 30.0, (0, 0.78, -0.36), 0.36),
                               ('back', 200.0, 25.0, (0, 1.1, -0.05), 0.34), ('thighL', 60.0, 30.0, (0.1, 0.88, 0.05), 0.26),
-                              ('chestF', 15.0, 15.0, (0, 1.1, -0.02), 0.3), ('thighR', -60.0, 30.0, (-0.1, 0.88, 0.05), 0.26)))
+                              ('chestF', 15.0, 15.0, (0, 1.1, -0.02), 0.3), ('thighR', -60.0, 30.0, (-0.1, 0.88, 0.05), 0.26),
+                              ('headback', 160.0, 20.0, (0, 1.27, -0.04), 0.2), ('headgame', 45.0, 30.0, (0, 1.27, -0.03), 0.2),
+                              ('breast', 50.0, 20.0, (0.05, 0.7, 0.35), 0.45), ('neckstrap', 90.0, 15.0, (0, 0.78, 0.2), 0.45)))
     print('PREVIEW', paths)

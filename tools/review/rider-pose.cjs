@@ -15,28 +15,27 @@ function makeRiderPose(THREE, bones, tune = {}) {
   const clamp01 = (x) => Math.min(1, Math.max(0, x));
   const ease = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
 
-  // Key poses of the right hand's grip G and spear direction D, in the torso's rest frame. The target is fixed in
-  // the horse's frame, so it is turned into the torso's frame for each key's body twist.
+  // Key poses of the right hand's grip G and spear direction D, in the torso's rest frame. The spear stays tip-up
+  // while the hand moves out, then the point comes down to level and he draws back and thrusts. Directions are set in
+  // the horse's frame (straight ahead, turned slightly towards the centre so the butt clears his arm) and turned
+  // into the torso's frame for each key's body twist.
   const T = piv.rtorso;
-  const TARGET = V([-0.5, 0.55, 1.15]);    // an enemy's chest ahead and to the right of the horse's head
-  const toTorso = (w, twist) => w.clone().sub(T).applyAxisAngle(new THREE.Vector3(0, 1, 0), -twist).add(T);
-  const HOLD = { g: GRIP.clone(), d: D_REST.clone(), pole: V([-0.35, -1, -0.45]), twist: 0 };
-  const key = (g, pole, twist) => ({ g: V(g), d: toTorso(TARGET, twist).sub(V(g)).normalize(), pole: V(pole), twist });
-  // lift the hand and slope the spear back over the shoulder, so the butt rises clear of the knee and arm
-  const LIFT = {
-    g: V(tune.liftG || [-0.295, 1.178, 0.064]), d: V(tune.liftD || [0.204, 0.735, -0.658]).normalize(), pole: V(tune.liftPole || [-0.907, -0.966, -2.623]), twist: 0,
-  };
-  // then the point comes forward over the top, the butt passing behind and below the raised elbow
-  // (LIFT and OVER were found by tools/review/rider-pose-search.cjs, maximising clearance from arm, body and horse)
-  const OVER = {
-    g: V(tune.overG || [-0.297, 1.318, 0.052]), d: V(tune.overD || [0.314, -0.037, 0.981]).normalize(), pole: V(tune.overPole || [-0.376, 0.134, 2.352]), twist: 0,
-  };
-  const READY = key(tune.readyG || [-0.2, 1.27, -0.03], tune.readyPole || [-1, -0.35, -0.35], -0.05);
-  const BACK = key([-0.19, 1.3, -0.1], [-1, -0.3, -0.5], -0.28);
-  const THRUST = key([-0.235, 1.2, 0.2], [-1, -0.45, -0.1], 0.3);
+  const Y = new THREE.Vector3(0, 1, 0);
+  const inTorso = (w, twist) => w.clone().applyAxisAngle(Y, -twist);
+  const yaw = tune.yaw ?? 0.159, pitch = tune.pitch ?? 0.027;
+  const LEVEL_DIR = V([yaw, pitch, 1]).normalize();
+  const HOLD = { g: GRIP.clone(), d: D_REST.clone(), pole: V(tune.holdPole || [-2.623, -0.474, -1.23]), twist: 0 };
+  const lvl = (g, pole, twist) => ({ g: V(g), d: inTorso(LEVEL_DIR, twist), pole: V(pole), twist });
+  // the hand moves out and up with the spear still upright, so the butt clears the knee before the point comes down
+  const OUT = { g: V(tune.outG || [-0.263, 1.124, 0.043]), d: V([0.02, 1, -0.06]).normalize(), pole: V(tune.outPole || [1.003, -0.968, -1.762]), twist: 0 };
+  const LEVEL = lvl(tune.levelG || [-0.348, 1.082, 0.082], tune.levelPole || [-1.91, -1.262, -0.854], -0.05);
+  const BACK = lvl(tune.backG || [-0.278, 0.943, -0.03], tune.backPole || [-1.654, 1.303, 0.505], -0.25);
+  const THRUST = lvl(tune.thrustG || [-0.3, 1.077, 0.141], tune.thrustPole || [-0.421, -1.896, 0.035], 0.25);
+  // (hand positions and elbow directions were found by tools/review/rider-pose-search.cjs, maximising clearance of
+  // spear and arm from everything else while keeping every grip within the arm's reach)
   // time (fraction of the attack) -> key
-  const TRACK = [[0, HOLD], [0.1, LIFT], [0.17, OVER], [0.25, READY], [0.37, BACK], [0.47, THRUST], [0.6, THRUST],
-    [0.73, READY], [0.81, OVER], [0.89, LIFT], [1.0, HOLD]];
+  const TRACK = [[0, HOLD], [0.12, OUT], [0.3, LEVEL], [0.4, BACK], [0.5, THRUST], [0.62, THRUST], [0.74, LEVEL],
+    [0.88, OUT], [1.0, HOLD]];
 
   function sample(u) {
     let i = 0;
@@ -76,11 +75,13 @@ function makeRiderPose(THREE, bones, tune = {}) {
       arm = solveArm(W, k.pole);
       qFW = arm.qForeWorld;
     }
+    // if the grip was out of reach the arm stops short: the spear goes where the fist actually is
+    const fist = arm.W.clone().add(GRIP.clone().sub(W0).applyQuaternion(qFW));
     return {
       rarmR: { q: arm.qUpper.toArray() },
       relbowR: { q: arm.qFore.toArray() },
-      rspear: { q: fromTo(D_REST, k.d).toArray(), p: k.g.clone().sub(GRIP).toArray() },
-      _elbow: arm.E, _wrist: arm.W,
+      rspear: { q: fromTo(D_REST, k.d).toArray(), p: fist.sub(GRIP).toArray() },
+      _elbow: arm.E, _wrist: arm.W, _reach: k.g.distanceTo(S) / (L1 + L2),
     };
   }
 

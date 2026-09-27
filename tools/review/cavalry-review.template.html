@@ -107,7 +107,7 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval · version 3</span>
+    <span class="status">Awaiting your approval · version 4</span>
     <h1>The Cavalryman</h1>
     <p class="lede">A new rider and saddle for the scout, built in Blender like the horse and fitted to it. He sits on the approved light horse, next to the scout your stables train today. Nothing has been put into the game yet.</p>
   </header>
@@ -198,7 +198,7 @@
       <h2>New</h2>
       <dl class="stats">
         <dt>Triangles</dt><dd><span id="new-tris">–</span> in full detail, <span id="light-tris">–</span> in the light version (rider and tack)</dd>
-        <dt>Rider</dt><dd>face, ears and hair under a leather cap; tunic in your colour under a leather cuirass; elbows and wrists that bend; fists that grip the spear and reins; legs shaped around the horse</dd>
+        <dt>Rider</dt><dd>a smooth head with painted hair under a leather cap; tunic in your colour under a leather cuirass; elbows and wrists that bend; fists that grip the spear and reins; legs shaped around the horse</dd>
         <dt>Tack</dt><dd>four-horned saddle on a saddle cloth in your colour, girth, breast collar with a bronze pendant, crupper, bridle and reins</dd>
       </dl>
     </div>
@@ -207,11 +207,12 @@
   <section class="notes">
     <h2>Latest changes</h2>
     <ul>
-      <li>Clothing no longer blends into the body. Each garment is pushed out from what it covers, and the layer underneath is pulled back in, so the tunic can't show through the cuirass, bare arm through the sleeves, or trousers and saddle horns through the tunic.</li>
-      <li>A proper chin and jawline.</li>
-      <li>He holds the spear about a third of the way up the shaft, upright at rest.</li>
-      <li>A new overarm attack. He lifts the spear, sloping it back over his shoulder, brings the point over the top, draws back and stabs forward and down, to the right of the horse's head. His arm follows the spear by IK.</li>
-      <li>I measured the spear against every other part (his arms, body, legs, the saddle, tack and horse) at 90 moments through the attack, in both the full and light versions. Nothing is closer than 9 mm, and the horse is at least 5 cm away. The route the spear takes over his shoulder was found by a search that maximises that clearance.</li>
+      <li>The attack is simpler. He holds the spear tip up, lowers the point to level, draws back and thrusts forward. His hand stays on the shaft the whole time, within his arm's reach.</li>
+      <li>A plain, smooth human head with a clear profile of brow, nose, jaw and chin, without fussy features.</li>
+      <li>The hair is painted onto the head rather than being a separate shell, so hair and head can't blend into each other.</li>
+      <li>The saddle's front horns and flaps were moved so they no longer pierce his thighs and tunic. The seat now gives slightly under him.</li>
+      <li>The breast collar runs back along both sides and tucks under the saddle cloth, and the girth sits under the cloth too, so no strap ends in mid-air.</li>
+      <li>Checked by measurement: at 90 moments through the attack, neither the spear nor his arm touches anything else. The closest gap is 3 mm. No saddle, leg or tunic points are inside one another.</li>
     </ul>
   </section>
 
@@ -230,7 +231,7 @@
     <ul>
       <li>Rider and tack add <span class="light-tris-inline">–</span> triangles to the light horse's 2,493, so a light cavalryman is about <span id="unit-ratio">5</span> times today's scout. I'll measure the frame rate in a big battle before committing, and trim the light version if needed.</li>
       <li>This is the scout's kit. Once you're happy with it, the other cavalry (knights, horse archers, camel riders and so on) would reuse this body with their own armour, helmets, shields and weapons.</li>
-      <li>The attack is an overarm stab with a twist of the body. In the game it plays each time the scout strikes; between strikes in a fight he could stay in the raised stance instead of lowering the spear every time.</li>
+      <li>The attack is a level thrust with a twist of the body. In the game it plays each time the scout strikes; between strikes in a fight he could keep the spear levelled instead of raising it every time.</li>
     </ul>
   </section>
 
@@ -521,7 +522,10 @@ function colorize() {
             if (m.horn) mix(c, horn, m.horn[i] * 0.9);
             if (m.nostril) mix(c, nostril, m.nostril[i] * 0.85);
           }
-        } else c.copy(kit[p.mat] || kit.leather);
+        } else {
+          c.copy(kit[p.mat] || kit.leather);
+          if (m.hair) mix(c, kit.hair, m.hair[i]);   // hair is painted onto the head
+        }
         const k = 0.26 + 0.74 * Math.pow(p.ao[i], 1.2);
         col.setXYZ(i, c.r * k, c.g * k, c.b * k);
       }

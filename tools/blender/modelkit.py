@@ -426,15 +426,33 @@ class Surface:
             polys.extend([base + i for i in p.vertices] for p in o.data.polygons)
         self.tree = BVHTree.FromPolygons(verts, polys)
 
+    def inside(self, p):
+        """Ray-parity test: odd number of crossings along a fixed skew direction means inside."""
+        d = Vector((0.5773, 0.5774, 0.5775))
+        o = g2b(p)
+        hits = 0
+        for _ in range(64):
+            loc, _, _, _ = self.tree.ray_cast(o, d, 10.0)
+            if loc is None:
+                break
+            hits += 1
+            o = loc + d * 1e-5
+        return hits % 2 == 1
+
     def signed_distance(self, p):
-        """Distance to the surface, negative inside (by the nearest face's normal)."""
+        """Distance to the surface, negative inside. Near the surface the nearest face's normal decides; further
+        away (where a thin part's nearest face can point either way) ray parity decides."""
         loc, nrm, _, dist = self.tree.find_nearest(g2b(p))
         if loc is None:
             return 1.0, None
-        sign = 1 if (g2b(p) - loc).dot(nrm) >= 0 else -1
-        return sign * dist, Vector(b2g(nrm))
+        by_normal = (g2b(p) - loc).dot(nrm) < 0
+        is_in = by_normal if dist < 0.004 else self.inside(p)
+        n = Vector(b2g(nrm))
+        if is_in != by_normal:
+            n = -n if dist < 0.004 else (Vector(p) - Vector(b2g(loc))).normalized() * (-1 if is_in else 1)
+        return (-dist if is_in else dist), n
 
-    def push_out(self, obj, gap, only=None):
+    def push_out(self, obj, gap, only=None, max_depth=1.0):
         """Moves vertices of obj that are inside the surface, or nearer than `gap`, out along the normal.
         `only(p)` can restrict it to some vertices. Returns (vertices inside before, deepest penetration)."""
         inside, deepest = 0, 0.0
@@ -443,7 +461,7 @@ class Surface:
             if only and not only(p):
                 continue
             d, n = self.signed_distance(p)
-            if n is None or d >= gap:
+            if n is None or d >= gap or d < -max_depth:
                 continue
             if d < 0:
                 inside += 1

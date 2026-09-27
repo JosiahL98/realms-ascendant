@@ -12,6 +12,8 @@ const SPEAR_R = 0.0095;
 const SPEAR = new Set(['spearshaft', 'spearhead', 'spearbinding']);
 const OPEN = new Set(['cloth', 'clothtrim', 'straps', 'bridle', 'reins', 'bits']);   // thin surfaces: distance only
 const SKIP = new Set(['handR']);   // the fist closes on the spear
+const ARM_R = 0.034;               // forearm with bracer, upper arm under the sleeve
+const ARM_OBSTACLES = new Set(['torso', 'cuirass', 'skirt', 'legs', 'belt', 'saddle', 'body', 'head']);
 
 // ---- skeleton and parts, as the review page builds them
 const root = new THREE.Group();
@@ -108,6 +110,22 @@ function evaluate(tune = {}, u0 = 0, u1 = 1, n = FRAMES, verbose = false) {
       const c = m - SPEAR_R;
       if (!worst[part.name] || c < worst[part.name].c) worst[part.name] = { c, t: u };
       if (c < frameMin) { frameMin = c; frameWho = part.name; }
+    }
+    // the right arm must not pass through his own body, the saddle or the horse either
+    const P = (n) => new THREE.Vector3().setFromMatrixPosition(groups[n].matrixWorld);
+    const sh = P('rarmR'), el = P('relbowR'), wr = P('rhandR');
+    const armPts = [];
+    for (let k = 0; k <= 8; k++) armPts.push(sh.clone().lerp(el, 0.35 + 0.65 * k / 8));
+    for (let k = 0; k <= 8; k++) armPts.push(el.clone().lerp(wr, k / 8));
+    for (const part of parts) {
+      if (!ARM_OBSTACLES.has(part.name)) continue;
+      const tris = worldTris(part);
+      let m = Infinity;
+      for (const q of armPts) m = Math.min(m, clearance(q, tris, true));
+      const c = m - ARM_R;
+      const key = 'arm vs ' + part.name;
+      if (!worst[key] || c < worst[key].c) worst[key] = { c, t: u };
+      if (c < frameMin) { frameMin = c; frameWho = key; }
     }
     overall = Math.min(overall, frameMin);
     if (verbose) {
