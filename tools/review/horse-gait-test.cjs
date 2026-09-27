@@ -1,4 +1,4 @@
-const { GAITS, makeHorseGait } = require('./horse-gait.js');
+const { GAITS, makeHorseGait } = require('./horse-gait.cjs');
 const horse = require(process.argv[2] || './horse.json');
 const G = makeHorseGait(horse.bones);
 const piv = {}; for (const b of horse.bones) piv[b.name] = { y: b.pivot[1], z: b.pivot[2] };
