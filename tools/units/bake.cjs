@@ -68,6 +68,30 @@ function scoutColor(p, i) {
 }
 
 // ------------------------------------------------------------------------------------------------ parts
+/**
+ * Baked occlusion, softened across each part: a few passes of averaging with neighbouring vertices, so contact
+ * shadows (under a sleeve's hem, at a wrist) fade out instead of streaking along coarse triangles.
+ */
+function softAO(p, passes = 3) {
+  const n = p.ao.length;
+  const nb = Array.from({ length: n }, () => new Set());
+  for (let i = 0; i < p.idx.length; i += 3) {
+    const a = p.idx[i], b = p.idx[i + 1], c = p.idx[i + 2];
+    nb[a].add(b); nb[a].add(c); nb[b].add(a); nb[b].add(c); nb[c].add(a); nb[c].add(b);
+  }
+  let ao = Float32Array.from(p.ao);
+  for (let k = 0; k < passes; k++) {
+    const next = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = ao[i] * 2, w = 2;
+      for (const j of nb[i]) { sum += ao[j]; w++; }
+      next[i] = sum / w;
+    }
+    ao = next;
+  }
+  return ao;
+}
+
 const BEND = ['neck', 'legFL', 'legFR', 'legBL', 'legBR'];
 
 /**
@@ -94,10 +118,11 @@ function mergeParts(model, colorOf) {
     for (const p of g.src) {
       const base = pos.length / 3;
       const m = p.masks || {};
+      const ao = softAO(p);
       for (let i = 0; i < p.ao.length; i++) {
         pos.push(r4(p.pos[i * 3]), r4(p.pos[i * 3 + 1]), r4(p.pos[i * 3 + 2]));
         nrm.push(r3(p.nrm[i * 3]), r3(p.nrm[i * 3 + 1]), r3(p.nrm[i * 3 + 2]));
-        const c = colorOf(p, i).multiplyScalar(shade(p.ao[i]));
+        const c = colorOf(p, i).multiplyScalar(shade(ao[i]));
         col.push(r3(c.r), r3(c.g), r3(c.b));
         if (g.skin === 'bend') {
           let best = 0, bi = 0;

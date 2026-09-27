@@ -122,6 +122,45 @@ class Part:
         bmesh.ops.create_cone(self._bm(cut), cap_ends=True, cap_tris=True, segments=seg, radius1=r, radius2=r_tip, depth=d.length, matrix=m)
         return self
 
+    def loft(self, rings, seg=20, power=2.0, cap_start=True, cap_end=True):
+        """
+        A smooth surface through a stack of cross-sections, for bodies and sleeves (use with remesh=False): regular
+        quads shade evenly at low triangle counts, where a remeshed and decimated union of blobs looks lumpy.
+        Each ring is (centre, u_axis, v_axis, ru, rv_pos, rv_neg): a superellipse (exponent `power`, 2 = ellipse)
+        with half-width ru along u and half-depth rv_pos / rv_neg along +v / -v. Ends are closed with a fan unless
+        told otherwise (an open end is a hem).
+        """
+        verts, faces = [], []
+        n = seg
+        for (c, u, v, ru, rvp, rvn) in rings:
+            c, u, v = Vector(c), Vector(u).normalized(), Vector(v).normalized()
+            for k in range(n):
+                a = 2 * math.pi * k / n
+                ca, sa = math.cos(a), math.sin(a)
+                # superellipse: |x|^p + |y|^p = 1
+                x = math.copysign(abs(ca) ** (2.0 / power), ca)
+                y = math.copysign(abs(sa) ** (2.0 / power), sa)
+                verts.append(tuple(c + u * (x * ru) + v * (y * (rvp if y >= 0 else rvn))))
+        m = len(rings)
+        for i in range(m - 1):
+            for k in range(n):
+                k2 = (k + 1) % n
+                faces.append((i * n + k, i * n + k2, (i + 1) * n + k2, (i + 1) * n + k))
+        if cap_start:
+            c0 = Vector(rings[0][0])
+            verts.append(tuple(c0))
+            ci = len(verts) - 1
+            for k in range(n):
+                faces.append((ci, (k + 1) % n, k))
+        if cap_end:
+            c1 = Vector(rings[-1][0])
+            verts.append(tuple(c1))
+            ci = len(verts) - 1
+            base = (m - 1) * n
+            for k in range(n):
+                faces.append((ci, base + k, base + (k + 1) % n))
+        return self.mesh(verts, faces)
+
     def mesh(self, verts, faces):
         """Adds raw geometry given in game coordinates."""
         vs = [self.bm.verts.new(g2b(v)) for v in verts]
