@@ -2,10 +2,11 @@
 Helpers for building game models in Blender from Python (run with `blender --background --python <script>`).
 
 Models are authored in game coordinates (x right, y up, z forward) and converted to Blender's z-up frame
-internally. Each part is a union of primitives that is voxel-remeshed into one watertight surface, smoothed so
-the joins become fillets, then decimated to a triangle budget. Ambient occlusion is baked into a per-vertex
-value by ray casting against the whole model plus the ground, and parts are exported as JSON relative to the
-pivot of the bone they belong to.
+internally. Each part is a union of primitives that is voxel-remeshed into one watertight surface, optionally
+carved by cutter primitives (nostrils, ear hollows), smoothed so the joins become fillets, then decimated to a
+triangle budget. Ambient occlusion is baked per vertex at two scales (overall shape and small creases) by ray
+casting against the whole model plus the ground. Parts can carry per-vertex masks (coat markings and the like)
+computed from rest-pose position and normal. Parts are exported as JSON relative to the pivot of their bone.
 """
 import json
 import math
@@ -26,103 +27,20 @@ def b2g(v):
     return (v[0], v[2], -v[1])
 
 
+def smoothstep(e0, e1, x):
+    t = max(0.0, min(1.0, (x - e0) / (e1 - e0)))
+    return t * t * (3 - 2 * t)
+
+
 def reset_scene():
     bpy.ops.wm.read_factory_settings(use_empty=True)
-
-
-class Part:
-    """A named piece of a model: bone it follows, material key, and the primitives it is made of."""
-
-    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400):
-        self.name = name
-        self.bone = bone
-        self.mat = mat
-        self.voxel = voxel
-        self.smooth = smooth
-        self.tris = tris
-        self.bm = bmesh.new()
-
-    def _add(self, fn, **kw):
-        fn(self.bm, **kw)
-
-    def ellipsoid(self, c, r, rot=(0.0, 0.0, 0.0), seg=20):
-        """Ellipsoid centred at game point c with game-axis radii r, rotated by game Euler angles (x, y, z)."""
-        m = Matrix.Translation(g2b(c)) @ game_rotation(rot) @ Matrix.Diagonal((r[0], r[2], r[1], 1.0))
-        bmesh.ops.create_uvsphere(self.bm, u_segments=seg, v_segments=max(8, seg * 2 // 3), radius=1.0, matrix=m)
-        return self
-
-    def ball(self, c, r, seg=16):
-        return self.ellipsoid(c, (r, r, r), seg=seg)
-
-    def limb(self, p0, p1, r0, r1, seg=16, caps=True, flat=1.0):
-        """Tapered cylinder between two game points with rounded ends. `flat` < 1 squashes it sideways (x)."""
-        a, b = g2b(p0), g2b(p1)
-        d = b - a
-        length = d.length
-        rot = d.normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
-        m = Matrix.Translation((a + b) / 2) @ rot @ Matrix.Diagonal((flat, 1.0, 1.0, 1.0))
-        bmesh.ops.create_cone(self.bm, cap_ends=True, cap_tris=False, segments=seg, radius1=r0, radius2=r1, depth=length, matrix=m)
-        if caps:
-            self.ellipsoid(p0, (r0 * flat, r0, r0), seg=seg)
-            self.ellipsoid(p1, (r1 * flat, r1, r1), seg=seg)
-        return self
-
-    def chain(self, points, radii, seg=16, flat=1.0):
-        """Limbs through consecutive points with per-point radii."""
-        for i in range(len(points) - 1):
-            self.limb(points[i], points[i + 1], radii[i], radii[i + 1], seg=seg, caps=True, flat=flat)
-        return self
-
-    def cone(self, base, tip, r, seg=10):
-        a, b = g2b(base), g2b(tip)
-        d = b - a
-        rot = d.normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
-        m = Matrix.Translation((a + b) / 2) @ rot
-        bmesh.ops.create_cone(self.bm, cap_ends=True, cap_tris=True, segments=seg, radius1=r, radius2=0.0, depth=d.length, matrix=m)
-        return self
-
-    def build(self):
-        """Union + smooth + decimate; returns a Blender object in absolute model space."""
-        me = bpy.data.meshes.new(self.name + '_src')
-        self.bm.to_mesh(me)
-        self.bm.free()
-        obj = bpy.data.objects.new(self.name, me)
-        bpy.context.scene.collection.objects.link(obj)
-        rm = obj.modifiers.new('remesh', 'REMESH')
-        rm.mode = 'VOXEL'
-        rm.voxel_size = self.voxel
-        rm.adaptivity = 0.0
-        if self.smooth:
-            sm = obj.modifiers.new('smooth', 'SMOOTH')
-            sm.factor = 0.5
-            sm.iterations = self.smooth
-        dense = evaluated_mesh(obj)
-        obj.modifiers.clear()
-        old = obj.data
-        obj.data = dense
-        bpy.data.meshes.remove(old)
-        tri_count = sum(len(p.vertices) - 2 for p in dense.polygons)
-        if tri_count > self.tris:
-            dm = obj.modifiers.new('decimate', 'DECIMATE')
-            dm.decimate_type = 'COLLAPSE'
-            dm.ratio = self.tris / tri_count
-            dm.use_collapse_triangulate = True
-            low = evaluated_mesh(obj)
-            obj.modifiers.clear()
-            old = obj.data
-            obj.data = low
-            bpy.data.meshes.remove(old)
-        obj.data.shade_smooth()
-        obj['bone'] = self.bone
-        obj['mat'] = self.mat
-        return obj
 
 
 def game_rotation(rot):
     """Rotation matrix for game-space Euler angles (x, y, z), expressed in Blender space."""
     rx, ry, rz = rot
     # game x = blender x, game y = blender z, game z = -blender y
-    return (Matrix.Rotation(rx, 4, 'X') @ Matrix.Rotation(ry, 4, 'Z') @ Matrix.Rotation(-rz, 4, 'Y'))
+    return Matrix.Rotation(rx, 4, 'X') @ Matrix.Rotation(ry, 4, 'Z') @ Matrix.Rotation(-rz, 4, 'Y')
 
 
 def evaluated_mesh(obj):
@@ -131,7 +49,113 @@ def evaluated_mesh(obj):
     return bpy.data.meshes.new_from_object(ev, depsgraph=dg)
 
 
-def hemisphere_dirs(n=48, seed=7):
+def _apply(obj, mod_type, **props):
+    """Add one modifier, bake its result into the object's mesh and drop the modifier."""
+    mod = obj.modifiers.new(mod_type.lower(), mod_type)
+    for k, v in props.items():
+        setattr(mod, k, v)
+    me = evaluated_mesh(obj)
+    obj.modifiers.clear()
+    old = obj.data
+    obj.data = me
+    bpy.data.meshes.remove(old)
+
+
+class Part:
+    """A named piece of a model: the bone it follows, its material key, and the primitives it is made of."""
+
+    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400, smooth_factor=0.5):
+        self.name = name
+        self.bone = bone
+        self.mat = mat
+        self.voxel = voxel
+        self.smooth = smooth
+        self.smooth_factor = smooth_factor
+        self.tris = tris
+        self.bm = bmesh.new()
+        self.cut_bm = None
+        self.masks = {}
+
+    def _bm(self, cut):
+        if not cut:
+            return self.bm
+        if self.cut_bm is None:
+            self.cut_bm = bmesh.new()
+        return self.cut_bm
+
+    def ellipsoid(self, c, r, rot=(0.0, 0.0, 0.0), seg=20, cut=False):
+        """Ellipsoid centred at game point c with game-axis radii r, rotated by game Euler angles (x, y, z)."""
+        m = Matrix.Translation(g2b(c)) @ game_rotation(rot) @ Matrix.Diagonal((r[0], r[2], r[1], 1.0))
+        bmesh.ops.create_uvsphere(self._bm(cut), u_segments=seg, v_segments=max(8, seg * 2 // 3), radius=1.0, matrix=m)
+        return self
+
+    def ball(self, c, r, seg=16, cut=False):
+        return self.ellipsoid(c, (r, r, r), seg=seg, cut=cut)
+
+    def limb(self, p0, p1, r0, r1, seg=16, caps=True, flat=1.0, cut=False):
+        """Tapered cylinder between two game points with rounded ends. `flat` < 1 squashes it sideways (x)."""
+        a, b = g2b(p0), g2b(p1)
+        d = b - a
+        rot = d.normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
+        m = Matrix.Translation((a + b) / 2) @ rot @ Matrix.Diagonal((flat, 1.0, 1.0, 1.0))
+        bmesh.ops.create_cone(self._bm(cut), cap_ends=True, cap_tris=False, segments=seg, radius1=r0, radius2=r1, depth=d.length, matrix=m)
+        if caps:
+            self.ellipsoid(p0, (r0 * flat, r0, r0), seg=seg, cut=cut)
+            self.ellipsoid(p1, (r1 * flat, r1, r1), seg=seg, cut=cut)
+        return self
+
+    def chain(self, points, radii, seg=16, flat=1.0):
+        """Limbs through consecutive points with per-point radii."""
+        for i in range(len(points) - 1):
+            self.limb(points[i], points[i + 1], radii[i], radii[i + 1], seg=seg, caps=True, flat=flat)
+        return self
+
+    def cone(self, base, tip, r, seg=10, r_tip=0.0, flat=1.0, cut=False):
+        a, b = g2b(base), g2b(tip)
+        d = b - a
+        rot = d.normalized().to_track_quat('Z', 'Y').to_matrix().to_4x4()
+        m = Matrix.Translation((a + b) / 2) @ rot @ Matrix.Diagonal((flat, 1.0, 1.0, 1.0))
+        bmesh.ops.create_cone(self._bm(cut), cap_ends=True, cap_tris=True, segments=seg, radius1=r, radius2=r_tip, depth=d.length, matrix=m)
+        return self
+
+    def mask(self, name, fn):
+        """Per-vertex value in 0..1 from the rest-pose game position and normal: fn((x, y, z), (nx, ny, nz))."""
+        self.masks[name] = fn
+        return self
+
+    def build(self):
+        """Union, carve, smooth and decimate; returns a Blender object in absolute model space."""
+        me = bpy.data.meshes.new(self.name + '_src')
+        self.bm.to_mesh(me)
+        self.bm.free()
+        obj = bpy.data.objects.new(self.name, me)
+        bpy.context.scene.collection.objects.link(obj)
+        _apply(obj, 'REMESH', mode='VOXEL', voxel_size=self.voxel, adaptivity=0.0)
+        if self.cut_bm is not None:
+            cme = bpy.data.meshes.new(self.name + '_cut')
+            self.cut_bm.to_mesh(cme)
+            self.cut_bm.free()
+            cutter = bpy.data.objects.new(self.name + '_cutter', cme)
+            bpy.context.scene.collection.objects.link(cutter)
+            _apply(cutter, 'REMESH', mode='VOXEL', voxel_size=self.voxel, adaptivity=0.0)
+            _apply(obj, 'BOOLEAN', operation='DIFFERENCE', object=cutter, solver='EXACT')
+            bpy.data.objects.remove(cutter)
+        if self.smooth:
+            _apply(obj, 'SMOOTH', factor=self.smooth_factor, iterations=self.smooth)
+        tri_count = sum(len(p.vertices) - 2 for p in obj.data.polygons)
+        if tri_count > self.tris:
+            _apply(obj, 'DECIMATE', decimate_type='COLLAPSE', ratio=self.tris / tri_count, use_collapse_triangulate=True)
+        obj.data.shade_smooth()
+        obj['bone'] = self.bone
+        obj['mat'] = self.mat
+        _MASKS[obj.name] = self.masks
+        return obj
+
+
+_MASKS = {}
+
+
+def hemisphere_dirs(n=64, seed=7):
     rnd = random.Random(seed)
     dirs = []
     for _ in range(n):
@@ -142,8 +166,11 @@ def hemisphere_dirs(n=48, seed=7):
     return dirs
 
 
-def bake_ao(objs, dist=0.3, samples=48, ground=True):
-    """Per-vertex ambient occlusion (1 = open sky) against all objects and the ground plane (blender z=0)."""
+def bake_ao(objs, dist=0.3, near=0.05, samples=64, ground=True):
+    """
+    Per-vertex ambient occlusion (1 = open sky) against all objects and the ground plane (blender z=0),
+    combining the overall shape (rays up to `dist`) with small creases (hits closer than `near`).
+    """
     verts, polys = [], []
     for o in objs:
         base = len(verts)
@@ -158,25 +185,44 @@ def bake_ao(objs, dist=0.3, samples=48, ground=True):
             n = v.normal.normalized()
             t = n.orthogonal().normalized()
             b = n.cross(t)
-            origin = v.co + n * 0.003
-            open_count = 0
+            origin = v.co + n * 0.002
+            far = close = 0
             for d in dirs:
                 w = t * d.x + b * d.y + n * d.z
-                hit, _, _, _ = tree.ray_cast(origin, w, dist)
-                blocked = hit is not None
-                if not blocked and ground and w.z < -1e-4:
+                hit, _, _, hd = tree.ray_cast(origin, w, dist)
+                if hit is None and ground and w.z < -1e-4:
                     tg = -origin.z / w.z
-                    blocked = 0 < tg < dist
-                if not blocked:
-                    open_count += 1
-            ao.append(open_count / len(dirs))
+                    if 0 < tg < dist:
+                        hit, hd = True, tg
+                if hit is not None:
+                    far += 1
+                    if hd < near:
+                        close += 1
+            a_far = 1 - far / len(dirs)
+            a_near = 1 - close / len(dirs)
+            ao.append(a_far * (0.55 + 0.45 * a_near))
         result[o.name] = ao
     return result
 
 
-def export_parts(objs, ao, pivots, path, extra=None):
-    """Write parts as JSON: positions relative to the part's bone pivot (game space), normals, AO, indices."""
-    out = {'pivots': pivots, 'parts': []}
+def vertex_masks(o):
+    """Evaluate a part's mask functions on its final vertices (game-space rest position and normal)."""
+    fns = _MASKS.get(o.name, {})
+    out = {}
+    for name, fn in fns.items():
+        vals = [max(0.0, min(1.0, fn(b2g(v.co), b2g(v.normal)))) for v in o.data.vertices]
+        if max(vals, default=0) > 0.01:
+            out[name] = vals
+    return out
+
+
+def export_model(objs, ao, bones, path):
+    """
+    Write bones (absolute rest pivots) and parts: positions relative to the part's bone pivot (game space),
+    normals, AO, masks and triangle indices.
+    """
+    pivots = {b['name']: b['pivot'] for b in bones}
+    out = {'bones': bones, 'parts': []}
     for o in objs:
         me = o.data
         me.calc_loop_triangles()
@@ -185,28 +231,29 @@ def export_parts(objs, ao, pivots, path, extra=None):
         for v in me.vertices:
             g = b2g(v.co)
             pos.extend(round(g[k] - pv[k], 4) for k in range(3))
-            n = b2g(v.normal)
-            nrm.extend(round(c, 3) for c in n)
+            nrm.extend(round(c, 3) for c in b2g(v.normal))
         idx = []
         for t in me.loop_triangles:
             idx.extend(t.vertices)
-        out['parts'].append({
-            'name': o.name, 'bone': o['bone'], 'mat': o['mat'],
-            'pos': pos, 'nrm': nrm, 'ao': [round(a, 2) for a in ao[o.name]], 'idx': idx,
-        })
-    if extra:
-        out.update(extra)
+        part = {'name': o.name, 'bone': o['bone'], 'mat': o['mat'], 'pos': pos, 'nrm': nrm,
+                'ao': [round(a, 2) for a in ao[o.name]], 'idx': idx}
+        masks = vertex_masks(o)
+        if masks:
+            part['masks'] = {k: [round(x, 2) for x in v] for k, v in masks.items()}
+        out['parts'].append(part)
     with open(path, 'w') as f:
         json.dump(out, f, separators=(',', ':'))
     return sum(len(p['idx']) // 3 for p in out['parts'])
 
 
-def preview(objs, ao, tints, path, center, size=1.6, views=(('iso', 45.0, 30.0),), res=(640, 640)):
-    """Render the model with AO-shaded vertex colours from the game's camera angle (and any extra views)."""
+def preview(objs, colors, path, center, size=1.6, views=(('iso', 45.0, 30.0),), res=(640, 640)):
+    """
+    Render with per-vertex colours from the game's camera angle (and any extra views).
+    colors: {object name: [(r, g, b) linear per vertex]}. A view is (name, azimuth, elevation[, centre, size]).
+    """
     scene = bpy.context.scene
     scene.render.engine = 'BLENDER_EEVEE_NEXT'
     scene.render.resolution_x, scene.render.resolution_y = res
-    scene.render.film_transparent = False
     world = bpy.data.worlds.new('w')
     world.use_nodes = True
     world.node_tree.nodes['Background'].inputs[0].default_value = (0.42, 0.44, 0.4, 1)
@@ -215,20 +262,17 @@ def preview(objs, ao, tints, path, center, size=1.6, views=(('iso', 45.0, 30.0),
     for o in objs:
         me = o.data
         attr = me.color_attributes.new('Col', 'FLOAT_COLOR', 'POINT')
-        tint = tints[o['mat']]
-        for i, a in enumerate(ao[o.name]):
-            k = 0.22 + 0.78 * a ** 1.3
-            attr.data[i].color = (tint[0] * k, tint[1] * k, tint[2] * k, 1)
+        for i, c in enumerate(colors[o.name]):
+            attr.data[i].color = (c[0], c[1], c[2], 1)
         mat = bpy.data.materials.new(o.name + '_m')
         mat.use_nodes = True
         nodes = mat.node_tree.nodes
         bsdf = nodes['Principled BSDF']
-        bsdf.inputs['Roughness'].default_value = 0.8
+        bsdf.inputs['Roughness'].default_value = 0.75
         col = nodes.new('ShaderNodeAttribute')
         col.attribute_name = 'Col'
         mat.node_tree.links.new(col.outputs['Color'], bsdf.inputs['Base Color'])
         me.materials.append(mat)
-    # ground
     gme = bpy.data.meshes.new('ground')
     bm = bmesh.new()
     bmesh.ops.create_grid(bm, x_segments=1, y_segments=1, size=4)
@@ -249,7 +293,6 @@ def preview(objs, ao, tints, path, center, size=1.6, views=(('iso', 45.0, 30.0),
     sobj.rotation_euler = (-sdir).to_track_quat('-Z', 'Y').to_euler()
     cam_data = bpy.data.cameras.new('cam')
     cam_data.type = 'ORTHO'
-    cam_data.ortho_scale = size
     cam = bpy.data.objects.new('cam', cam_data)
     scene.collection.objects.link(cam)
     scene.camera = cam
