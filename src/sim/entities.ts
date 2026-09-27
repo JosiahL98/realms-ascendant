@@ -70,6 +70,8 @@ export class Unit {
   scanAt = 0;
   lastAttackedAt = -100;
   lastAttackerId = 0;
+  /** When the unit last became idle (-1 while busy); idle villagers find work after a moment. */
+  idleSince = -1;
   /** Position to return to (defensive stance / auto-engage leash). */
   homeX = 0;
   homeZ = 0;

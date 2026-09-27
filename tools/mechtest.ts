@@ -258,5 +258,83 @@ const ageTo = (g: Game, pid: number, age: number) => {
   check('Castle Age start', g.players[1].age === 2 && g.players[2].age === 2 && vills === 9, `age ${g.players[1].age}, villagers ${vills}`);
 }
 
+/* ---------------------------------------------------------------- common-sense behaviour */
+{
+  // a soldier sent at a distant target fights the enemy that blocks and attacks it, then carries on
+  const g = fresh();
+  const mine = g.spawnUnit('manAtArms', 1, 52, 60);
+  const blocker = g.spawnUnit('militia', 2, 55, 60);
+  const far = g.spawnUnit('militia', 2, 70, 60);
+  far.stance = 'passive';
+  g.recomputePop(1); g.recomputePop(2);
+  issueCommand(g, 1, { c: 'attack', units: [mine.id], target: far.id });
+  issueCommand(g, 2, { c: 'attack', units: [blocker.id], target: mine.id });
+  const hp0 = blocker.hp;
+  run(g, 60, () => !blocker.alive || !mine.alive);
+  check('ordered soldier fights back against a blocker', blocker.hp < hp0 && (!blocker.alive || !mine.alive), `blocker hp ${blocker.hp.toFixed(0)}/${hp0}, mine alive ${mine.alive}`);
+  if (mine.alive) {
+    run(g, 5);
+    const o = mine.order;
+    check('then resumes the ordered attack', o.t === 'attack' && o.target === far.id, JSON.stringify(o));
+  }
+}
+{
+  // a villager fights back against a soldier, then goes back to chopping
+  const g = fresh();
+  const tree = g.addResource('tree', 'wood', 100, 60, 60, true);
+  g.map.refreshAll();
+  const vil = g.spawnUnit('villager', 1, 59, 61.5);
+  const foe = g.spawnUnit('scout', 2, 64, 64);
+  foe.stance = 'passive';
+  g.recomputePop(1); g.recomputePop(2);
+  issueCommand(g, 1, { c: 'gather', units: [vil.id], target: tree.id });
+  run(g, 4);
+  issueCommand(g, 2, { c: 'attack', units: [foe.id], target: vil.id });
+  const hp0 = foe.hp;
+  run(g, 6);
+  check('villager fights back', foe.hp < hp0, `attacker hp ${foe.hp.toFixed(0)}/${hp0}`);
+  issueCommand(g, 2, { c: 'move', units: [foe.id], x: 80, z: 80 });
+  run(g, 10);
+  check('villager returns to work when the attacker leaves', vil.alive && vil.order.t === 'gather', JSON.stringify(vil.order));
+}
+{
+  // idle villagers find work on their own
+  const g = fresh();
+  g.addResource('berries', 'forage', 125, 62, 60, true);
+  g.map.refreshAll();
+  const vil = g.spawnUnit('villager', 1, 58, 60);
+  g.recomputePop(1);
+  run(g, 6);
+  check('idle villager starts gathering', vil.order.t === 'gather', JSON.stringify(vil.order));
+  const f = g.createBuilding('house', 1, 54, 54, false);
+  const v2 = g.spawnUnit('villager', 1, 52, 52);
+  g.recomputePop(1);
+  run(g, 6);
+  check('idle villager builds a nearby foundation', v2.order.t === 'build' && v2.order.target === f.id, JSON.stringify(v2.order));
+}
+{
+  // idle soldiers engage enemies that come near
+  const g = fresh();
+  const mine = g.spawnUnit('spearman', 1, 55, 60);
+  const foe = g.spawnUnit('militia', 2, 58.5, 60);
+  foe.stance = 'passive';
+  g.recomputePop(1); g.recomputePop(2);
+  const hp0 = foe.hp;
+  run(g, 10);
+  check('idle soldier attacks a nearby enemy', mine.order.t === 'attack' || foe.hp < hp0, `enemy hp ${foe.hp.toFixed(0)}/${hp0}`);
+}
+{
+  // idle soldiers come to help a villager under attack just beyond their sight
+  const g = fresh();
+  const guard = g.spawnUnit('spearman', 1, 55, 60);
+  const vil = g.spawnUnit('villager', 1, 60, 60);
+  const foe = g.spawnUnit('scout', 2, 63, 62);
+  g.recomputePop(1); g.recomputePop(2);
+  issueCommand(g, 2, { c: 'attack', units: [foe.id], target: vil.id });
+  run(g, 6);
+  const o = guard.order;
+  check('idle soldier helps a villager under attack', o.t === 'attack' && o.target === foe.id, JSON.stringify(o));
+}
+
 console.log(failures ? `\n${failures} FAILED` : '\nall mechanics passed');
 process.exit(failures ? 1 : 0);

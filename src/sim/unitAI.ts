@@ -275,6 +275,7 @@ export function updateUnit(game: Game, u: Unit, dt: number): void {
   }
   u.moving = false;
   const o = u.order;
+  if (o.t !== 'idle') u.idleSince = -1;
   switch (o.t) {
     case 'idle':
       doIdle(game, u, dt);
@@ -424,6 +425,16 @@ function doIdle(game: Game, u: Unit, dt: number): void {
     animalIdle(game, u, dt);
     return;
   }
+  if (u.def.gatherer) {
+    // the player's idle villagers and fishing ships find something to do after a moment
+    if (!game.players[u.owner].isHuman) return;
+    if (u.idleSince < 0) u.idleSince = game.time;
+    if (game.time - u.idleSince > 2 && game.time >= u.scanAt) {
+      u.scanAt = game.time + 1.2 + game.rng.next() * 0.6;
+      findWork(game, u);
+    }
+    return;
+  }
   if (game.time < u.scanAt) return;
   u.scanAt = game.time + 0.4 + game.rng.next() * 0.4;
   if (u.def.monk) {
@@ -435,6 +446,61 @@ function doIdle(game: Game, u: Unit, dt: number): void {
   const r = u.stance === 'standGround' ? Math.max(1, u.stats.range + u.radius + 0.3) : u.stats.los;
   const t = findEnemyTarget(game, u, r, false);
   if (t) engage(game, u, t);
+}
+
+/** Resource kinds an idle villager takes up on its own. Hunting and herding are left to the player. */
+const AUTO_KINDS: GatherKind[] = ['forage', 'wood', 'gold', 'stone', 'farm'];
+
+/**
+ * An idle villager looks for something useful nearby: first an unfinished building of its own side, then the kind of
+ * resource it last gathered, then whatever is closest.
+ */
+function findWork(game: Game, u: Unit): void {
+  if (u.def.naval) {
+    const fish = findNextResource(game, u, 'fish', u.x, u.z, 0);
+    if (fish) setOrder(game, u, { t: 'gather', target: fish.id });
+    return;
+  }
+  if (u.def.builder) {
+    let site: Building | null = null;
+    let sd = 8;
+    for (const b of game.buildings) {
+      if (!b.alive || b.built || b.owner !== u.owner) continue;
+      const d = distToRect(u.x, u.z, b.tx, b.tz, b.tx + b.w, b.tz + b.h);
+      if (d < sd) {
+        sd = d;
+        site = b;
+      }
+    }
+    if (site) {
+      setOrder(game, u, { t: 'build', target: site.id });
+      return;
+    }
+  }
+  const last = u.lastGatherKind && AUTO_KINDS.includes(u.lastGatherKind) ? u.lastGatherKind : null;
+  let best: ResourceNode | Unit | Building | null = null;
+  let bd = Infinity;
+  for (const kind of AUTO_KINDS) {
+    const r = findNextResource(game, u, kind, u.x, u.z, 0);
+    if (!r) continue;
+    // keep to the kind it was gathering unless something else is much closer
+    const d = Math.hypot(r.x - u.x, r.z - u.z) - (kind === last ? 4 : 0);
+    if (d < bd) {
+      bd = d;
+      best = r;
+    }
+  }
+  if (best) setOrder(game, u, { t: 'gather', target: best.id });
+}
+
+/** Idle soldiers close to a unit under attack come to its aid, even if the fight is just beyond their own sight. */
+function callForHelp(game: Game, victim: Unit, attacker: Unit): void {
+  game.spatial.query(victim.x, victim.z, 6, (v) => {
+    if (v === victim || !v.alive || v.owner !== victim.owner || v.order.t !== 'idle' || v.orderQueue.length) return;
+    if (!isMilitary(v) || v.stance === 'passive' || v.stance === 'standGround' || !canAttackUnit(v, attacker)) return;
+    if (v.stats.minRange > 0 && Math.hypot(attacker.x - v.x, attacker.z - v.z) < v.stats.minRange) return;
+    engage(game, v, attacker);
+  });
 }
 
 export function onAttacked(game: Game, u: Unit, attacker: Unit | Building): void {
@@ -456,14 +522,18 @@ export function onAttacked(game: Game, u: Unit, attacker: Unit | Building): void
     return;
   }
   if (attacker.kind !== 'unit') return;
+  if (!attacker.def.animal && game.isEnemy(u.owner, attacker.owner)) callForHelp(game, u, attacker);
   if (u.def.gatherer) {
-    // villagers defend themselves against animals when idle or hunting
-    if (attacker.def.animal && (u.order.t === 'idle' || u.order.t === 'gather')) {
-      if (u.order.t === 'gather' && u.order.target === attacker.id) return;
-      u.prevOrder = u.order.t === 'gather' ? u.order : null;
-      u.order = { t: 'attack', target: attacker.id };
-      resetNav(u);
-    }
+    // villagers fight back against animals, and against enemies that come up close, then go back to work
+    const t = u.order.t;
+    const working = t === 'idle' || t === 'gather' || t === 'build' || t === 'repair' || t === 'dropoff';
+    if (!working || !canAttackUnit(u, attacker)) return;
+    if (t === 'gather' && u.order.target === attacker.id) return;
+    if (!attacker.def.animal && edgeDist(u, attacker) > 2) return;
+    u.prevOrder = t === 'idle' ? null : u.order;
+    u.order = { t: 'attack', target: attacker.id };
+    u.attackWindup = -1;
+    resetNav(u);
     return;
   }
   if (!isMilitary(u) || u.stance === 'passive' || !canAttackUnit(u, attacker)) return;
@@ -475,10 +545,20 @@ export function onAttacked(game: Game, u: Unit, attacker: Unit | Building): void
     }
     engage(game, u, attacker);
   } else if (o.t === 'attack') {
-    // switch from a building/auto target to the unit hitting us (only for auto-engagements)
     const cur = game.get(o.target);
-    if (cur && cur.kind === 'building' && !o.force) {
+    if (!cur || cur.id === attacker.id) return;
+    if (cur.kind === 'building' && !o.force) {
+      // switch from a building/auto target to the unit hitting us
       u.order = { t: 'attack', target: attacker.id };
+      resetNav(u);
+      return;
+    }
+    // the target is out of reach and someone is hitting us from close by: deal with them first, then carry on
+    const reach = attackRange(u) + 0.3;
+    if (cur.alive && cur.kind !== 'resource' && edgeDist(u, cur) > reach && edgeDist(u, attacker) <= Math.max(reach, 1.5)) {
+      if (!u.engagedFrom) u.engagedFrom = o;
+      u.order = { t: 'attack', target: attacker.id };
+      u.attackWindup = -1;
       resetNav(u);
     }
   }
@@ -585,6 +665,23 @@ function doAttack(game: Game, u: Unit, o: Extract<Order, { t: 'attack' }>, dt: n
   }
   const d = edgeDist(u, t);
   const range = attackRange(u);
+  // villagers fending off an attacker do not chase it away from their work
+  if (u.def.gatherer && !o.force && t.kind === 'unit' && !t.def.animal && d > 3) {
+    targetLost(game, u, true);
+    return;
+  }
+  // an enemy in the way (in contact while the target is still out of reach) is fought first
+  if (d > range + 0.5 && isMilitary(u) && u.stance !== 'passive' && game.time >= u.scanAt) {
+    u.scanAt = game.time + 0.3 + game.rng.next() * 0.2;
+    const near = findEnemyTarget(game, u, u.radius + 1.1, false);
+    if (near && near !== t && near.kind === 'unit' && edgeDist(u, near) <= Math.max(range, 0.6) + 0.3) {
+      if (!u.engagedFrom) u.engagedFrom = o;
+      u.order = { t: 'attack', target: near.id };
+      u.attackWindup = -1;
+      resetNav(u);
+      return;
+    }
+  }
   if (d > range) {
     if (u.stance === 'standGround' && !o.force && u.order === o && u.engagedFrom === null && isMilitary(u)) {
       targetLost(game, u);
@@ -678,6 +775,17 @@ function targetLost(game: Game, u: Unit, noRescan = false): void {
     u.order = po;
     resetNav(u);
     return;
+  }
+  // a fight that got in the way of an ordered attack: go back to the ordered target
+  const ef = u.engagedFrom;
+  if (ef && ef.t === 'attack' && u.orderQueue.length === 0) {
+    const et = game.get(ef.target);
+    if (et && et.alive && et.kind !== 'resource') {
+      u.order = ef;
+      u.engagedFrom = null;
+      resetNav(u);
+      return;
+    }
   }
   if (!noRescan && isMilitary(u) && u.stance !== 'passive' && u.orderQueue.length === 0) {
     const r = u.stance === 'standGround' ? Math.max(1, u.stats.range + u.radius + 0.3) : u.stats.los;
