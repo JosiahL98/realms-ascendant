@@ -64,7 +64,9 @@ def _apply(obj, mod_type, **props):
 class Part:
     """A named piece of a model: the bone it follows, its material key, and the primitives it is made of."""
 
-    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400, smooth_factor=0.5):
+    def __init__(self, name, bone, mat, voxel=0.006, smooth=6, tris=400, smooth_factor=0.5, remesh=True):
+        #: remesh=False keeps the geometry as given (thin straps, cloth shells) instead of fusing it into a volume
+        self.remesh = remesh
         self.name = name
         self.bone = bone
         self.mat = mat
@@ -118,6 +120,67 @@ class Part:
         bmesh.ops.create_cone(self._bm(cut), cap_ends=True, cap_tris=True, segments=seg, radius1=r, radius2=r_tip, depth=d.length, matrix=m)
         return self
 
+    def mesh(self, verts, faces):
+        """Adds raw geometry given in game coordinates."""
+        vs = [self.bm.verts.new(g2b(v)) for v in verts]
+        for f in faces:
+            try:
+                self.bm.faces.new([vs[i] for i in f])
+            except ValueError:
+                pass
+        return self
+
+    def ribbon(self, points, normals, width, thickness, closed=False, bottom=False):
+        """
+        A flat strap along a polyline lying on a surface: `normals` point away from the surface; the strap's width
+        runs across the path within the surface, and it is `thickness` thick (a closed box section).
+        """
+        n = len(points)
+        P = [Vector(p) for p in points]
+        N = [Vector(q).normalized() for q in normals]
+        verts, faces = [], []
+        for i in range(n):
+            a_ = P[(i - 1) % n] if closed or i > 0 else P[i]
+            b_ = P[(i + 1) % n] if closed or i < n - 1 else P[i]
+            t = (b_ - a_).normalized()
+            side = t.cross(N[i]).normalized() * (width / 2)
+            lift = N[i] * thickness
+            for q in (P[i] - side, P[i] + side, P[i] + side + lift, P[i] - side + lift):
+                verts.append(tuple(q))
+        rows = n if closed else n - 1
+        for i in range(rows):
+            j = (i + 1) % n
+            for k in range(4):
+                if k == 0 and not bottom:
+                    continue   # the underside lies on the surface and is never seen
+                k2 = (k + 1) % 4
+                faces.append((i * 4 + k, j * 4 + k, j * 4 + k2, i * 4 + k2))
+        if not closed:
+            faces.append((0, 3, 2, 1))
+            last = (n - 1) * 4
+            faces.append((last, last + 1, last + 2, last + 3))
+        return self.mesh(verts, faces)
+
+    def tube(self, points, radius, seg=6):
+        """A round tube along a polyline (reins, cords)."""
+        P = [Vector(p) for p in points]
+        verts, faces = [], []
+        for i, p in enumerate(P):
+            t = (P[min(i + 1, len(P) - 1)] - P[max(i - 1, 0)]).normalized()
+            u = t.orthogonal().normalized()
+            w = t.cross(u)
+            for k in range(seg):
+                a_ = 2 * math.pi * k / seg
+                verts.append(tuple(p + (u * math.cos(a_) + w * math.sin(a_)) * radius))
+        for i in range(len(P) - 1):
+            for k in range(seg):
+                k2 = (k + 1) % seg
+                faces.append((i * seg + k, (i + 1) * seg + k, (i + 1) * seg + k2, i * seg + k2))
+        faces.append(tuple(range(seg - 1, -1, -1)))
+        last = (len(P) - 1) * seg
+        faces.append(tuple(last + k for k in range(seg)))
+        return self.mesh(verts, faces)
+
     def mask(self, name, fn):
         """Per-vertex value in 0..1 from the rest-pose game position and normal: fn((x, y, z), (nx, ny, nz))."""
         self.masks[name] = fn
@@ -125,11 +188,21 @@ class Part:
 
     def build(self):
         """Union, carve, smooth and decimate; returns a Blender object in absolute model space."""
+        if not self.remesh:
+            bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
         me = bpy.data.meshes.new(self.name + '_src')
         self.bm.to_mesh(me)
         self.bm.free()
         obj = bpy.data.objects.new(self.name, me)
         bpy.context.scene.collection.objects.link(obj)
+        if not self.remesh:
+            obj.data.shade_smooth()
+            obj['bone'] = self.bone
+            obj['mat'] = self.mat
+            _MASKS[obj.name] = self.masks
+            if self.cut_bm is not None:
+                self.cut_bm.free()
+            return obj
         _apply(obj, 'REMESH', mode='VOXEL', voxel_size=self.voxel, adaptivity=0.0)
         if self.cut_bm is not None:
             cme = bpy.data.meshes.new(self.name + '_cut')
@@ -169,13 +242,13 @@ def hemisphere_dirs(n=64, seed=7):
     return dirs
 
 
-def bake_ao(objs, dist=0.3, near=0.05, samples=64, ground=True):
+def bake_ao(objs, dist=0.3, near=0.05, samples=64, ground=True, occluders=()):
     """
     Per-vertex ambient occlusion (1 = open sky) against all objects and the ground plane (blender z=0),
     combining the overall shape (rays up to `dist`) with small creases (hits closer than `near`).
     """
     verts, polys = [], []
-    for o in objs:
+    for o in list(objs) + list(occluders):
         base = len(verts)
         verts.extend(v.co.copy() for v in o.data.vertices)
         polys.extend([base + i for i in p.vertices] for p in o.data.polygons)
@@ -313,3 +386,49 @@ def preview(objs, colors, path, center, size=1.6, views=(('iso', 45.0, 30.0),), 
         bpy.ops.render.render(write_still=True)
         paths.append(p)
     return paths
+
+
+def object_from_export(path, part_names=None, name='import'):
+    """Builds a Blender object (absolute game positions) from parts of an exported model, e.g. to fit against."""
+    with open(path) as f:
+        data = json.load(f)
+    pivots = {b['name']: b['pivot'] for b in data['bones']}
+    verts, faces = [], []
+    for p in data['parts']:
+        if part_names and p['name'] not in part_names:
+            continue
+        pv = pivots[p['bone']]
+        base = len(verts)
+        pos = p['pos']
+        for i in range(0, len(pos), 3):
+            verts.append(g2b((pos[i] + pv[0], pos[i + 1] + pv[1], pos[i + 2] + pv[2])))
+        idx = p['idx']
+        faces.extend((base + idx[i], base + idx[i + 1], base + idx[i + 2]) for i in range(0, len(idx), 3))
+    me = bpy.data.meshes.new(name)
+    me.from_pydata(verts, [], faces)
+    me.update()
+    obj = bpy.data.objects.new(name, me)
+    bpy.context.scene.collection.objects.link(obj)
+    return obj, data
+
+
+class Surface:
+    """Ray-casting helper against a mesh object, in game coordinates."""
+
+    def __init__(self, obj):
+        self.tree = BVHTree.FromObject(obj, bpy.context.evaluated_depsgraph_get())
+
+    def cast(self, origin, direction, dist=5.0):
+        hit, nrm, _, _ = self.tree.ray_cast(g2b(origin), g2b(direction).normalized(), dist)
+        if hit is None:
+            return None, None
+        return Vector(b2g(hit)), Vector(b2g(nrm))
+
+    def toward(self, target, direction, reach=0.8):
+        """First surface point hit by a ray coming from `target - direction * reach` towards target."""
+        d = Vector(direction).normalized()
+        return self.cast(Vector(target) - d * reach, d, reach * 2)
+
+    def nearest(self, p):
+        loc, nrm, _, dist = self.tree.find_nearest(g2b(p))
+        return Vector(b2g(loc)), Vector(b2g(nrm)), dist
