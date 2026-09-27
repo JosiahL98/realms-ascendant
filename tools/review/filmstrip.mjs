@@ -4,7 +4,8 @@ import { chromium } from 'playwright';
 import { writeFileSync } from 'node:fs';
 
 const [file, out, ...rest] = process.argv.slice(2);
-const args = rest.map((x) => (isNaN(Number(x)) ? x : Number(x)));
+// a single JSON argument is passed as one object (pages whose hook takes options)
+const args = rest.length === 1 && rest[0].startsWith('{') ? [JSON.parse(rest[0])] : rest.map((x) => (isNaN(Number(x)) ? x : Number(x)));
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: 1280, height: 1400 } });
 const logs = [];

@@ -1,0 +1,524 @@
+<title>Villagers at Work</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=EB+Garamond:ital,wght@0,400;0,600;1,400&display=swap">
+<style>
+  :root {
+    --ground: #efe4c8; --surface: #f8f0dc; --ink: #2a1a0a; --muted: #6b5434; --line: #cdb88c;
+    --accent: #7a5a1c; --accent-ink: #fbf3df; --pill-bg: #e8cf86; --pill-ink: #3b2a1a; --focus: #a8781f; --stage: #1d140b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --ground: #150d06; --surface: #22170c; --ink: #eadfc4; --muted: #b6a27c; --line: #4a3620;
+      --accent: #d8b25a; --accent-ink: #1a1007; --pill-bg: #3b2a1a; --pill-ink: #f2d98c; --focus: #f2d98c; --stage: #0c0703;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --ground: #150d06; --surface: #22170c; --ink: #eadfc4; --muted: #b6a27c; --line: #4a3620;
+    --accent: #d8b25a; --accent-ink: #1a1007; --pill-bg: #3b2a1a; --pill-ink: #f2d98c; --focus: #f2d98c; --stage: #0c0703;
+  }
+  [hidden] { display: none !important; }
+  body { background: var(--ground); color: var(--ink); font-family: 'EB Garamond', Georgia, 'Times New Roman', serif; font-size: 18px; line-height: 1.5; margin: 0; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding-inline: 16px; padding-block: 28px 56px; display: grid; gap: 22px; }
+  header { display: grid; gap: 10px; }
+  .status { justify-self: start; font-family: 'Cinzel', Georgia, serif; font-size: 12px; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; background: var(--pill-bg); color: var(--pill-ink); padding: 4px 10px; border-radius: 999px; }
+  h1 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; font-size: clamp(30px, 5vw, 46px); line-height: 1.1; margin: 0; letter-spacing: 0.02em; }
+  h2 { font-family: 'Cinzel', Georgia, serif; font-weight: 700; margin: 0; letter-spacing: 0.03em; }
+  .lede { margin: 0; max-width: 70ch; }
+  .stage { position: relative; background: var(--stage); border: 1px solid var(--accent); border-radius: 6px; overflow: hidden; aspect-ratio: 16 / 9; max-width: 100%; }
+  @media (max-width: 640px) { .stage { aspect-ratio: 4 / 3; } }
+  .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; }
+  .stage canvas:active { cursor: grabbing; }
+  .tag { position: absolute; transform: translate(-50%, 12px); font-family: 'Cinzel', Georgia, serif; font-size: 12px; font-weight: 700;
+    letter-spacing: 0.08em; color: #f2d98c; background: rgba(21, 13, 6, 0.78); padding: 2px 8px; border-radius: 3px; pointer-events: none; white-space: nowrap; }
+  .hint { position: absolute; left: 12px; bottom: 8px; font-size: 15px; color: rgba(234, 223, 196, 0.85); pointer-events: none; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 24px; align-items: end; }
+  .group { display: grid; gap: 6px; }
+  .glabel { font-family: 'Cinzel', Georgia, serif; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--muted); }
+  .seg { display: flex; flex-wrap: wrap; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; background: var(--surface); }
+  .seg button { font: inherit; font-size: 16px; background: transparent; color: var(--ink); border: 0; border-right: 1px solid var(--line);
+    padding: 5px 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 7px; }
+  .seg button:last-child { border-right: 0; }
+  .seg button:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); }
+  .seg button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); }
+  .seg button:disabled { opacity: 0.45; cursor: default; }
+  button:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+  .swatch { width: 12px; height: 12px; border-radius: 50%; border: 1px solid rgba(0, 0, 0, 0.35); }
+  .jobnote { margin: 0; max-width: 74ch; min-height: 3em; }
+  section.notes { display: grid; gap: 10px; }
+  section.notes h2, section.answer h2 { font-size: 21px; }
+  section.notes ul { margin: 0; padding-left: 22px; display: grid; gap: 6px; max-width: 74ch; }
+  section.answer { display: grid; gap: 8px; border-top: 1px solid var(--line); padding-top: 22px; }
+  section.answer p { margin: 0; max-width: 70ch; }
+  kbd { font-family: inherit; font-weight: 600; background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 6px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <span class="status">Awaiting your approval · part 2 of 2</span>
+    <h1>Villagers at Work</h1>
+    <p class="lede">The villagers you approved, now at their seven jobs, carrying their tools, fighting and dying. Pick a job and an animation below. The trees, rocks and so on are simple stand-ins to show what each blow lands on. Nothing has been put into the game yet.</p>
+  </header>
+
+  <div class="stage" id="stage">
+    <canvas id="view" aria-label="3D view of the new villagers at work"></canvas>
+    <div id="tags"></div>
+    <div class="hint">Drag to turn · scroll or pinch to zoom</div>
+  </div>
+
+  <div class="controls">
+    <div class="group"><span class="glabel" id="l-tool">Job</span>
+      <div class="seg" role="group" aria-labelledby="l-tool">
+        <button type="button" data-tool="axe">Chopping</button><button type="button" data-tool="pick">Mining</button>
+        <button type="button" data-tool="hammer">Building</button><button type="button" data-tool="hoe">Farming</button>
+        <button type="button" data-tool="basket">Foraging</button><button type="button" data-tool="spear">Hunting</button>
+        <button type="button" data-tool="rod">Fishing</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-anim">Animation</span>
+      <div class="seg" role="group" aria-labelledby="l-anim">
+        <button type="button" data-anim="work">Working</button><button type="button" data-anim="idle">Standing</button>
+        <button type="button" data-anim="walk">Walking</button><button type="button" data-anim="attack">Fighting</button>
+        <button type="button" data-anim="die">Dying</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-rate">Playback</span>
+      <div class="seg" role="group" aria-labelledby="l-rate">
+        <button type="button" data-rate="1">Normal</button><button type="button" data-rate="0.5">½ speed</button>
+        <button type="button" data-rate="0.25">¼ speed</button><button type="button" data-rate="0">Pause</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-cmp">Show</span>
+      <div class="seg" role="group" aria-labelledby="l-cmp">
+        <button type="button" data-cmp="pair">Man and woman</button><button type="button" data-cmp="lod">Full vs light</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-view">Camera</span>
+      <div class="seg" role="group" aria-labelledby="l-view">
+        <button type="button" data-view="game">Game camera</button><button type="button" data-view="side">Side view</button>
+        <button type="button" data-view="front">Front view</button><button type="button" data-view="orbit">Free turn</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-size">Size</span>
+      <div class="seg" role="group" aria-labelledby="l-size">
+        <button type="button" data-size="close">Close-up</button><button type="button" data-size="game">True game size</button>
+      </div></div>
+    <div class="group"><span class="glabel" id="l-team">Player colour</span>
+      <div class="seg" role="group" aria-labelledby="l-team" id="teams"></div></div>
+  </div>
+  <p class="jobnote" id="jobnote" aria-live="polite"></p>
+
+  <section class="notes">
+    <h2>About these animations</h2>
+    <ul id="notes">%%NOTES%%</ul>
+  </section>
+
+  <section class="answer"><h2>Your call</h2>
+    <p>Tell me what to change, or reply <kbd>approve the work animations</kbd> and I'll put the horse, the cavalryman and the villagers into the game.</p></section>
+</div>
+
+<script type="application/json" id="new-m">%%NEW_M%%</script>
+<script type="application/json" id="new-f">%%NEW_F%%</script>
+<script type="application/json" id="new-m-light">%%NEW_M_LIGHT%%</script>
+<script type="application/json" id="new-f-light">%%NEW_F_LIGHT%%</script>
+<script>
+%%HUMANPOSE%%
+</script>
+
+<script type="module">
+import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.1/three.module.min.js';
+
+const json = (id) => JSON.parse(document.getElementById(id).textContent);
+const NEW = { m: { full: json('new-m'), light: json('new-m-light') }, f: { full: json('new-f'), light: json('new-f-light') } };
+const TEAMS = [
+  { name: 'Blue', hex: 0x2f5fe0 }, { name: 'Red', hex: 0xd42a1e }, { name: 'Green', hex: 0x2fa82f }, { name: 'Yellow', hex: 0xe8d12a },
+  { name: 'Teal', hex: 0x22b8c8 }, { name: 'Purple', hex: 0x9a3cd8 }, { name: 'Grey', hex: 0x9a9a9a }, { name: 'Orange', hex: 0xf07c14 },
+];
+const KIT = {
+  skin: 0xe0b48c, team2: 0xe2dac8, leather: 0x7a5230, wrap: 0x9a8466, shoe: 0x4a3020, wood: 0x6a4a2a, iron: 0xa8acb4,
+  cord: 0xd8ccb0, wicker: 0xb08a4e, woodend: 0xc49a62, meat: 0xa8322a, sack: 0x9a7a52, gold: 0xf0c030, stone: 0xa4a098,
+};
+const HAIR = 0x3a2616, BEARD = 0x33200f;
+const JOBS = {
+  axe: 'Chopping: a diagonal chop from over the right shoulder into the trunk, both hands on the haft, the weight shifting into the blow.',
+  pick: 'Mining gold or stone: the pick swung up overhead and brought down onto the rock, the point landing first.',
+  hammer: 'Building: kneeling on one knee, holding a peg in the left hand and driving it with short hammer blows.',
+  hoe: 'Farming: the hoe raised in front, chopped down into the soil and drawn back towards the feet.',
+  basket: 'Foraging: the basket held out in the left hand while the right hand picks berries and drops them in.',
+  spear: 'Hunting: kneeling by the kill with the spear planted upright, the free hand at work on the carcass.',
+  rod: 'Fishing: the rod held out over the water with the line hanging to the float, and a tug now and then.',
+};
+const ANIMS = {
+  idle: 'Standing with the tool: short tools held head-forward at the side, the spear sloped up like a staff, the hoe trailing its blade, the rod pointing ahead.',
+  walk: 'Walking with the tool: the same holds, with the tool arm swinging less than the free one.',
+  attack: 'Fighting: an overhead blow with whatever is in hand (the spear is thrust instead). The blow lands half-way through, as the game times it.',
+  die: 'Dying: the knees give, the body falls back and comes to rest on the ground.',
+};
+
+const state = { anim: 'work', tool: 'axe', rate: 1, cmp: 'pair', view: 'game', size: 'close', team: 0 };
+try { const s = JSON.parse(localStorage.getItem('villager-work-review-1') || 'null'); if (s) Object.assign(state, s, { rate: s.rate === 0 ? 1 : s.rate }); } catch { /* none */ }
+const save = () => { try { localStorage.setItem('villager-work-review-1', JSON.stringify(state)); } catch { /* ignore */ } };
+
+const stage = document.getElementById('stage'), canvas = document.getElementById('view');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.NeutralToneMapping;
+renderer.toneMappingExposure = 1.08;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2b2217);
+scene.add(new THREE.HemisphereLight(0xcfe0ff, 0x6a5a3a, 1.35));
+const sun = new THREE.DirectionalLight(0xfff0d8, 2.6);
+sun.position.set(-0.55, 0.78, 0.3).multiplyScalar(8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -2.5, right: 2.5, top: 2.5, bottom: -2.5, near: 0.5, far: 20 });
+sun.shadow.bias = -0.0006;
+sun.shadow.normalBias = 0.015;
+scene.add(sun);
+
+{
+  const c = document.createElement('canvas');
+  c.width = c.height = 512;
+  const g = c.getContext('2d');
+  g.fillStyle = '#7d7a3e'; g.fillRect(0, 0, 512, 512);
+  let seed = 7;
+  const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+  for (let i = 0; i < 2600; i++) {
+    const x = rnd() * 512, y = rnd() * 512, r = 2 + rnd() * 7, k = rnd();
+    g.fillStyle = k < 0.5 ? 'rgba(96,104,48,0.35)' : k < 0.8 ? 'rgba(140,128,70,0.3)' : 'rgba(70,78,36,0.35)';
+    g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
+  }
+  const tex = new THREE.CanvasTexture(c);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+  tex.repeat.set(3, 3);
+  tex.anisotropy = 8;
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(12, 12).rotateX(-Math.PI / 2), new THREE.MeshLambertMaterial({ map: tex }));
+  ground.receiveShadow = true;
+  scene.add(ground);
+}
+const mat = new THREE.MeshLambertMaterial({ vertexColors: true });
+const lin = (hex) => new THREE.Color(hex);
+const dye = (hex) => { const c = new THREE.Color(hex), hsl = {}; c.getHSL(hsl); return c.setHSL(hsl.h, hsl.s * 0.82, hsl.l * 0.9); };
+
+// ---- villagers: bones, rigid parts on their bones, skinned parts (skirt, fishing line) on a skeleton
+function buildNew(D) {
+  const rig = { root: new THREE.Group(), groups: {}, parts: [] };
+  const piv = Object.fromEntries(D.bones.map((b) => [b.name, new THREE.Vector3(...b.pivot)]));
+  const boneList = [];
+  for (const b of D.bones) {
+    const bone = new THREE.Bone();
+    bone.position.copy(piv[b.name]).sub(b.parent ? piv[b.parent] : new THREE.Vector3());
+    bone.userData.rest = bone.position.clone();
+    rig.groups[b.name] = bone;
+    boneList.push(bone);
+    (b.parent ? rig.groups[b.parent] : rig.root).add(bone);
+  }
+  rig.root.updateMatrixWorld(true);
+  const skeleton = new THREE.Skeleton(boneList);
+  const index = Object.fromEntries(D.bones.map((b, i) => [b.name, i]));
+  for (const p of D.parts) {
+    const g = new THREE.BufferGeometry();
+    const m = p.masks || {};
+    const skinBones = Object.keys(m).filter((k) => index[k] !== undefined);
+    const skinned = skinBones.length > 0;
+    const pos = Float32Array.from(p.pos);
+    if (skinned) {
+      const o = piv[p.bone];
+      for (let i = 0; i < pos.length; i += 3) { pos[i] += o.x; pos[i + 1] += o.y; pos[i + 2] += o.z; }
+    }
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(p.ao.length * 3), 3));
+    g.setIndex(p.idx);
+    let mesh;
+    if (skinned) {
+      const n = p.ao.length, si = new Uint16Array(n * 4), sw = new Float32Array(n * 4);
+      for (let i = 0; i < n; i++) {
+        let rest = 1;
+        si[i * 4] = index[p.bone];
+        skinBones.slice(0, 3).forEach((bn, j) => {
+          const w = m[bn][i];
+          si[i * 4 + 1 + j] = index[bn];
+          sw[i * 4 + 1 + j] = w;
+          rest -= w;
+        });
+        sw[i * 4] = rest;
+      }
+      g.setAttribute('skinIndex', new THREE.BufferAttribute(si, 4));
+      g.setAttribute('skinWeight', new THREE.BufferAttribute(sw, 4));
+      mesh = new THREE.SkinnedMesh(g, mat);
+      rig.root.add(mesh);
+      mesh.bind(skeleton, new THREE.Matrix4());
+    } else {
+      mesh = new THREE.Mesh(g, mat);
+      rig.groups[p.bone].add(mesh);
+    }
+    mesh.castShadow = mesh.receiveShadow = true;
+    mesh.frustumCulled = false;
+    rig.parts.push({ g, p, mesh });
+  }
+  rig.props = buildProps();
+  rig.root.add(rig.props.group);
+  return rig;
+}
+
+// ---- stand-ins for what each job works on (placed where the blows land)
+function buildProps() {
+  const group = new THREE.Group();
+  const lam = (hex, extra = {}) => new THREE.MeshLambertMaterial({ color: hex, ...extra });
+  const add = (kind, mesh) => { mesh.userData.kind = kind; mesh.castShadow = mesh.receiveShadow = true; group.add(mesh); return mesh; };
+  const at = (tool) => (posers.m.WORK[tool].prop || {}).at || [0, 0, 0.5];
+  let a = at('axe');
+  const trunk = add('axe', new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.085, 1.3, 14), lam(0x6b4b2e)));
+  trunk.position.set(a[0], 0.65, a[2]);
+  const crown = add('axe', new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), lam(0x3f6a2a, { flatShading: true })));
+  crown.position.set(a[0], 1.45, a[2]);
+  a = at('pick');
+  const rock = add('pick', new THREE.Mesh(new THREE.DodecahedronGeometry(0.17, 0), lam(0x9c968a, { flatShading: true })));
+  rock.scale.set(1.2, 1.3, 0.9); rock.position.set(a[0], 0.14, a[2]);
+  for (const [dx, dy, dz] of [[0.05, 0.2, -0.07], [-0.09, 0.14, -0.1], [0.1, 0.1, -0.12]]) {
+    const n = add('pick', new THREE.Mesh(new THREE.OctahedronGeometry(0.022, 0), lam(0xf0c030)));
+    n.position.set(a[0] + dx, dy, a[2] + dz);
+  }
+  a = at('hammer');
+  const beam = add('hammer', new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.1, 0.1), lam(0x8a6a44)));
+  beam.position.set(a[0], 0.05, a[2]);
+  const peg = add('hammer', new THREE.Mesh(new THREE.CylinderGeometry(0.011, 0.011, 0.08, 8), lam(0xc49a62)));
+  peg.position.set(a[0], 0.14, a[2] - 0.03);
+  a = at('hoe');
+  const soil = add('hoe', new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.6).rotateX(-Math.PI / 2), lam(0x5a4028)));
+  soil.position.set(a[0], 0.002, a[2]); soil.castShadow = false;
+  for (let i = 0; i < 4; i++) {
+    const ridge = add('hoe', new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 0.66, 6).rotateZ(Math.PI / 2), lam(0x6a4c30)));
+    ridge.position.set(a[0], 0.004, a[2] - 0.2 + i * 0.13);
+  }
+  a = at('basket');
+  const bush = add('basket', new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), lam(0x355c24, { flatShading: true })));
+  bush.scale.set(1.1, 0.9, 1); bush.position.set(a[0], 0.2, a[2] + 0.05);
+  for (let i = 0; i < 9; i++) {
+    const b = add('basket', new THREE.Mesh(new THREE.SphereGeometry(0.014, 6, 4), lam(0xb0202a)));
+    const u = i * 2.4, v = 0.4 + (i % 3) * 0.3;
+    b.position.set(a[0] + Math.cos(u) * 0.15 * Math.sin(v * 2), 0.2 + Math.cos(v * 2) * 0.12, a[2] + 0.05 + Math.sin(u) * 0.15 * Math.sin(v * 2));
+  }
+  a = at('spear');
+  const deer = add('spear', new THREE.Mesh(new THREE.CapsuleGeometry(0.07, 0.22, 4, 10).rotateZ(Math.PI / 2), lam(0x8a5a32)));
+  deer.position.set(a[0] + 0.02, 0.065, a[2] + 0.04);
+  const head = add('spear', new THREE.Mesh(new THREE.SphereGeometry(0.045, 10, 8), lam(0x7a4e2c)));
+  head.position.set(a[0] - 0.2, 0.05, a[2] + 0.06);
+  a = at('rod');
+  const water = add('rod', new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.3).rotateX(-Math.PI / 2), lam(0x2f6a8a, { transparent: true, opacity: 0.85 })));
+  water.position.set(0, 0.004, a[2] + 0.65); water.castShadow = false;
+  const bank = add('rod', new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.012, 0.03), lam(0x6a5a36)));
+  bank.position.set(0, 0.006, a[2]);
+  return { group, show(tool, anim) { for (const m of group.children) m.visible = anim === 'work' && m.userData.kind === tool; } };
+}
+
+/** Height and radius of the hem at rest (lowest ring of the skirt), so the poses keep it off the ground. */
+function hemOf(model) {
+  const sk = model.parts.find((p) => p.name === 'skirt');
+  const piv = model.bones.find((b) => b.name === sk.bone).pivot;
+  let y = Infinity, r = 0;
+  for (let i = 0; i < sk.pos.length; i += 3) y = Math.min(y, sk.pos[i + 1] + piv[1]);
+  for (let i = 0; i < sk.pos.length; i += 3) if (sk.pos[i + 1] + piv[1] < y + 0.01) r = Math.max(r, Math.hypot(sk.pos[i] + piv[0], sk.pos[i + 2] + piv[2]));
+  return { y, r };
+}
+const posers = { m: makeHumanPose(THREE, NEW.m.full.bones, { hem: hemOf(NEW.m.full) }), f: makeHumanPose(THREE, NEW.f.full.bones, { hem: hemOf(NEW.f.full) }) };
+const rigs = { m: { full: buildNew(NEW.m.full), light: buildNew(NEW.m.light) }, f: { full: buildNew(NEW.f.full), light: buildNew(NEW.f.light) } };
+const allRigs = [rigs.m.full, rigs.m.light, rigs.f.full, rigs.f.light];
+for (const r of allRigs) scene.add(r.root);
+
+function colorize() {
+  const team = dye(TEAMS[state.team].hex);
+  const c = new THREE.Color(), hair = lin(HAIR), beard = lin(BEARD);
+  const kit = Object.fromEntries(Object.entries(KIT).map(([k, v]) => [k, lin(v)]));
+  kit.team = team;
+  for (const r of allRigs) for (const { g, p } of r.parts) {
+    const col = g.getAttribute('color'), m = p.masks || {};
+    for (let i = 0; i < p.ao.length; i++) {
+      c.copy(kit[p.mat] || kit.leather);
+      if (m.hair) c.lerp(hair, m.hair[i]);
+      if (m.beard) c.lerp(beard, m.beard[i]);
+      const k = 0.26 + 0.74 * Math.pow(p.ao[i], 1.2);
+      col.setXYZ(i, c.r * k, c.g * k, c.b * k);
+    }
+    col.needsUpdate = true;
+  }
+}
+function showVariants(r) {
+  for (const { p, mesh } of r.parts) if (p.variant) mesh.visible = p.variant === 'tool:' + state.tool;
+  r.props.show(state.tool, state.anim);
+}
+
+function applyPose(r, pose) {
+  for (const [name, grp] of Object.entries(r.groups)) {
+    const p = pose[name];
+    if (p && p.q) grp.quaternion.fromArray(p.q);
+    else grp.quaternion.identity();
+    grp.position.copy(grp.userData.rest);
+    if (p && p.p) { grp.position.x += p.p[0]; grp.position.y += p.p[1]; grp.position.z += p.p[2]; }
+  }
+}
+
+// ---- layout and cameras
+const RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
+const tagBox = document.getElementById('tags');
+let shown = [];
+function layout() {
+  for (const r of allRigs) r.root.visible = false;
+  tagBox.textContent = '';
+  const list = state.cmp === 'lod'
+    ? [[rigs.m.full, 'Man, full'], [rigs.m.light, 'Man, light'], [rigs.f.full, 'Woman, full'], [rigs.f.light, 'Woman, light']]
+    : [[rigs.m.light, 'Man'], [rigs.f.light, 'Woman']];
+  const across = state.view === 'side' ? new THREE.Vector3(0, 0, 1) : state.view === 'front' ? new THREE.Vector3(1, 0, 0) : RIGHT;
+  const gap = state.view === 'side' ? 1.9 : 1.05;
+  shown = list.map(([r, label], i) => {
+    r.root.visible = true;
+    r.root.position.copy(across).multiplyScalar((i - (list.length - 1) / 2) * gap);
+    const el = document.createElement('div');
+    el.className = 'tag';
+    el.textContent = label;
+    tagBox.appendChild(el);
+    return { r, el };
+  });
+}
+const cam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 100);
+const pcam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+const target = new THREE.Vector3(0, 0.45, 0.2);
+const orbit = { yaw: Math.PI / 4, pitch: 0.35, dist: 4 };
+let zoomScale = 1;
+function viewDir() {
+  if (state.view === 'side') return new THREE.Vector3(1, 0.06, 0).normalize();
+  if (state.view === 'front') return new THREE.Vector3(0.35, 0.25, 1).normalize();
+  if (state.view === 'back') return new THREE.Vector3(-0.45, 0.3, -1).normalize();
+  return new THREE.Vector3(Math.cos(Math.PI / 6) * Math.SQRT1_2, Math.sin(Math.PI / 6), Math.cos(Math.PI / 6) * Math.SQRT1_2);
+}
+function layoutCamera() {
+  const w = stage.clientWidth, h = stage.clientHeight;
+  renderer.setSize(w, h, false);
+  const n = shown.length;
+  const zoom = state.size === 'game' ? 62 : Math.min(w / (n * 1.05 + 0.9), h / 1.5) * zoomScale;
+  cam.left = -w / 2 / zoom; cam.right = w / 2 / zoom; cam.top = h / 2 / zoom; cam.bottom = -h / 2 / zoom;
+  cam.position.copy(target).addScaledVector(viewDir(), 20);
+  cam.lookAt(target);
+  cam.updateProjectionMatrix();
+  pcam.aspect = w / h;
+  pcam.updateProjectionMatrix();
+}
+const pointers = new Map();
+let pinch0 = 0;
+canvas.addEventListener('pointerdown', (e) => { canvas.setPointerCapture(e.pointerId); pointers.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pointers.size === 2) { const [a, b] = [...pointers.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); } });
+canvas.addEventListener('pointermove', (e) => {
+  const p = pointers.get(e.pointerId); if (!p) return;
+  const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
+  if (pointers.size === 1 && Math.abs(dx) + Math.abs(dy) > 0) {
+    if (state.view !== 'orbit') setState({ view: 'orbit' });
+    orbit.yaw -= dx * 0.008; orbit.pitch = Math.min(1.35, Math.max(0.05, orbit.pitch + dy * 0.006));
+  } else if (pointers.size === 2) { const [a, b] = [...pointers.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0 > 0) zoomBy(pinch0 / d); pinch0 = d; }
+});
+const release = (e) => { pointers.delete(e.pointerId); pinch0 = 0; };
+canvas.addEventListener('pointerup', release);
+canvas.addEventListener('pointercancel', release);
+canvas.addEventListener('wheel', (e) => { e.preventDefault(); zoomBy(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
+function zoomBy(f) { if (state.view === 'orbit') orbit.dist = Math.min(10, Math.max(0.8, orbit.dist * f)); else if (state.size === 'close') { zoomScale = Math.min(4, Math.max(0.4, zoomScale / f)); layoutCamera(); } }
+
+// ---- controls
+TEAMS.forEach((t, i) => {
+  const b = document.createElement('button'); b.type = 'button'; b.dataset.team = String(i);
+  b.innerHTML = `<span class="swatch" style="background:#${t.hex.toString(16).padStart(6, '0')}"></span>${t.name}`;
+  document.getElementById('teams').appendChild(b);
+});
+function setState(patch) { Object.assign(state, patch); save(); sync(); }
+function sync() {
+  for (const k of ['anim', 'tool', 'rate', 'cmp', 'view', 'size', 'team']) {
+    document.querySelectorAll(`[data-${k}]`).forEach((b) => b.setAttribute('aria-pressed', String(b.dataset[k] === String(state[k]))));
+  }
+  document.querySelectorAll('[data-size]').forEach((b) => { b.disabled = state.view === 'orbit'; });
+  document.getElementById('jobnote').textContent = state.anim === 'work' ? JOBS[state.tool] : ANIMS[state.anim];
+  for (const r of allRigs) showVariants(r);
+  colorize();
+  layout();
+  layoutCamera();
+  clock = 0;
+}
+document.addEventListener('click', (e) => {
+  const b = e.target.closest('button'); if (!b || b.disabled) return;
+  const d = b.dataset;
+  if (d.anim) setState({ anim: d.anim });
+  else if (d.tool) setState({ tool: d.tool });
+  else if (d.rate !== undefined) setState({ rate: Number(d.rate) });
+  else if (d.cmp) setState({ cmp: d.cmp });
+  else if (d.view) setState({ view: d.view });
+  else if (d.size) { zoomScale = 1; setState({ size: d.size }); }
+  else if (d.team) setState({ team: Number(d.team) });
+});
+new ResizeObserver(layoutCamera).observe(stage);
+
+// ---- loop
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+if (reduced && state.rate !== 0) state.rate = 0.25;
+let clock = 0, last = performance.now();
+/** Dying plays through, rests on the ground a moment, and starts again. */
+const animTime = (t) => (state.anim === 'die' ? t % (posers.m.DIE.len + 1.6) : t);
+function poseAll(t) {
+  for (const k of ['m', 'f']) {
+    const pose = posers[k].pose(state.anim, animTime(t), false, state.tool);
+    applyPose(rigs[k].full, pose);
+    applyPose(rigs[k].light, pose);
+  }
+}
+const tmp = new THREE.Vector3();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  clock += dt * state.rate;
+  poseAll(clock);
+  let c = cam;
+  if (state.view === 'orbit') {
+    const cp = Math.cos(orbit.pitch);
+    pcam.position.set(target.x + Math.sin(orbit.yaw) * cp * orbit.dist, target.y + Math.sin(orbit.pitch) * orbit.dist, target.z + Math.cos(orbit.yaw) * cp * orbit.dist);
+    pcam.lookAt(target);
+    c = pcam;
+  }
+  renderer.render(scene, c);
+  for (const { r, el } of shown) {
+    tmp.copy(r.root.position).project(c);
+    el.style.left = ((tmp.x + 1) / 2) * stage.clientWidth + 'px';
+    el.style.top = ((1 - tmp.y) / 2) * stage.clientHeight + 'px';
+    el.hidden = tmp.z > 1;
+  }
+  requestAnimationFrame(frame);
+}
+sync();
+requestAnimationFrame(frame);
+
+/** Test hook: a strip of n frames of one animation, from a fixed camera. */
+window.__filmstrip = (o = {}) => {
+  const { n = 8, w = 300, h = 300, view = 'side', half = 0.6, cy = 0.45, cx = 0, span = 1, start = 0, anim = 'work', tool = 'axe', who = 'm', cmp = 'pair' } = o;
+  const saved = { ...state };
+  Object.assign(state, { view, cmp, size: 'close', anim, tool });
+  sync();
+  for (const r of allRigs) r.root.visible = false;
+  const rig = cmp === 'lod' ? rigs[who].full : rigs[who].light;
+  rig.root.visible = true;
+  rig.root.position.set(0, 0, 0);
+  const out = document.createElement('canvas'); out.width = w * n; out.height = h;
+  const ctx = out.getContext('2d');
+  renderer.setSize(w, h, false);
+  const aspect = w / h;
+  cam.left = -half * aspect + cx; cam.right = half * aspect + cx; cam.top = half + cy - target.y; cam.bottom = -half + cy - target.y;
+  cam.updateProjectionMatrix();
+  for (let i = 0; i < n; i++) {
+    const t = start + (i / n) * span;
+    const pose = posers[who].pose(anim, t, false, tool);
+    applyPose(rig, pose);
+    renderer.render(scene, cam);
+    ctx.drawImage(renderer.domElement, i * w, 0, w, h);
+    ctx.fillStyle = '#fff'; ctx.font = '14px sans-serif'; ctx.fillText(`${Math.round((i / n) * 100)}%`, i * w + 8, 18);
+  }
+  Object.assign(state, saved);
+  sync();
+  return out.toDataURL('image/png');
+};
+window.__ready = true;
+</script>

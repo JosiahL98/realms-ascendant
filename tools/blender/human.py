@@ -67,13 +67,29 @@ for s, side in ((1, 'L'), (-1, 'R')):
         {'name': f'elbow{side}', 'parent': f'arm{side}', 'pivot': list(EL[s])},
         {'name': f'hand{side}', 'parent': f'elbow{side}', 'pivot': list(WR[s])},
     ]
+# the fishing line hangs from the rod tip (a bone the poses keep level with the world, so the line hangs straight down)
+# to the float (a bone placed in the world: on the water when fishing, a short way below the tip when carried); the line
+# is skinned between the two
+ROD_TIP = WR[-1] + V((-0.003, -0.045, 0.008)) + V((0, -0.1, 0.72))   # the rod runs forward through the fist
+LINE = 0.7
+BONES += [
+    {'name': 'rodtip', 'parent': 'handR', 'pivot': list(ROD_TIP)},
+    {'name': 'bob', 'parent': 'root', 'pivot': list(ROD_TIP + V((0, -LINE, 0)))},
+]
 
 parts = []
 LAYERS = []          # (outer, [inners], gap) applied after everything is built
 
 
-def add(part, variant=None):
+def add(part, variant=None, turn=None):
     obj = part.build()
+    if turn:
+        # re-seat a tool in the fist: its vertices are turned about the grip (game space) by turn(offset)
+        pivot, fn = turn
+        for v in obj.data.vertices:
+            g = V(mk.b2g(v.co)) - pivot
+            v.co = mk.g2b(tuple(pivot + V(fn(g))))
+        obj.data.update()
     if variant:
         obj['variant'] = variant
     parts.append(obj)
@@ -230,48 +246,56 @@ def shaft(part, a, b, r0, r1):
     part.limb(a, b, r0, r1, seg=8)
 
 
-# tools hang down from the fist along -y, head forward (+z); the work poses swing them
+# tools are laid out hanging from the fist along -y with the head's face forward (+z), then seated in the fist as a
+# hand really holds them: the shaft runs front to back through the fist, the head on the thumb side (+z), and the head's
+# face (edge, point, striking face) along the forearm (-y); the spear's head is on the thumb side too
+SEAT = (GRIP_R, lambda o: (-o.x, -o.z, -o.y))
+SEAT_SPEAR = (GRIP_R, lambda o: (o.x, -o.z, o.y))
+# the hoe's top hand holds the end of the handle like a broom: the handle leaves the fist close to the forearm's line
+# (26 degrees off it, towards the thumb), and the blade faces back towards the farmer
+SEAT_HOE = (GRIP_R, lambda o: (-o.x, 0.9 * o.y - 0.44 * o.z, -0.44 * o.y - 0.9 * o.z))
 down = V((0, -1, 0))
 axe_w, axe_i = tool_part('axehaft', 'wood'), tool_part('axehead', 'iron')
 shaft(axe_w, GRIP_R + V((0, 0.05, 0)), GRIP_R + V((0, -0.34, 0)), 0.011, 0.012)
 axe_i.ellipsoid(GRIP_R + V((0, -0.31, 0.04)), (0.009, 0.045, 0.045))
 axe_i.limb(GRIP_R + V((0, -0.31, 0.0)), GRIP_R + V((0, -0.31, 0.025)), 0.017, 0.013, seg=8)
-add(axe_w, 'tool:axe')
-add(axe_i, 'tool:axe')
+add(axe_w, 'tool:axe', SEAT)
+add(axe_i, 'tool:axe', SEAT)
 
 pick_w, pick_i = tool_part('pickhaft', 'wood'), tool_part('pickhead', 'iron')
 shaft(pick_w, GRIP_R + V((0, 0.05, 0)), GRIP_R + V((0, -0.36, 0)), 0.011, 0.012)
 pick_i.limb(GRIP_R + V((0, -0.34, -0.1)), GRIP_R + V((0, -0.34, 0.13)), 0.006, 0.014, seg=8)
 pick_i.cone(GRIP_R + V((0, -0.34, 0.12)), GRIP_R + V((0, -0.36, 0.17)), 0.012, seg=8)
 pick_i.cone(GRIP_R + V((0, -0.34, -0.09)), GRIP_R + V((0, -0.33, -0.12)), 0.007, seg=8)
-add(pick_w, 'tool:pick')
-add(pick_i, 'tool:pick')
+add(pick_w, 'tool:pick', SEAT)
+add(pick_i, 'tool:pick', SEAT)
 
 ham_w, ham_i = tool_part('hammerhaft', 'wood'), tool_part('hammerhead', 'iron')
 shaft(ham_w, GRIP_R + V((0, 0.035, 0)), GRIP_R + V((0, -0.19, 0)), 0.01, 0.011)
 ham_i.limb(GRIP_R + V((0, -0.19, -0.035)), GRIP_R + V((0, -0.19, 0.045)), 0.022, 0.022, seg=10)
-add(ham_w, 'tool:hammer')
-add(ham_i, 'tool:hammer')
+add(ham_w, 'tool:hammer', SEAT)
+add(ham_i, 'tool:hammer', SEAT)
 
 hoe_w, hoe_i = tool_part('hoehaft', 'wood'), tool_part('hoeblade', 'iron')
-shaft(hoe_w, GRIP_R + V((0, 0.08, 0)), GRIP_R + V((0, -0.6, 0)), 0.011, 0.012)
+shaft(hoe_w, GRIP_R + V((0, 0.012, 0)), GRIP_R + V((0, -0.6, 0)), 0.011, 0.012)
 hoe_i.ellipsoid(GRIP_R + V((0, -0.6, 0.045)), (0.04, 0.006, 0.05))
 hoe_i.limb(GRIP_R + V((0, -0.59, 0.0)), GRIP_R + V((0, -0.6, 0.02)), 0.012, 0.01, seg=8)
-add(hoe_w, 'tool:hoe')
-add(hoe_i, 'tool:hoe')
+add(hoe_w, 'tool:hoe', SEAT_HOE)
+add(hoe_i, 'tool:hoe', SEAT_HOE)
 
 sp_w, sp_i = tool_part('huntspear', 'wood'), tool_part('huntspearhead', 'iron')
 shaft(sp_w, GRIP_R + V((0, 0.3, 0)), GRIP_R + V((0, -0.55, 0)), 0.009, 0.009)
 sp_i.ellipsoid(GRIP_R + V((0, 0.34, 0)), (0.016, 0.045, 0.005))
 sp_i.cone(GRIP_R + V((0, 0.37, 0)), GRIP_R + V((0, 0.4, 0)), 0.01, seg=6)
-add(sp_w, 'tool:spear')
-add(sp_i, 'tool:spear')
+add(sp_w, 'tool:spear', SEAT_SPEAR)
+add(sp_i, 'tool:spear', SEAT_SPEAR)
 
 rod = tool_part('rod', 'wood')
 shaft(rod, GRIP_R + V((0, 0.08, 0)), GRIP_R + V((0, -0.72, 0.1)), 0.009, 0.004)
-add(rod, 'tool:rod')
-line = mk.Part('rodline', 'handR', 'cord', remesh=False)
-line.tube([GRIP_R + V((0, -0.72, 0.1)), GRIP_R + V((0, -0.9, 0.16)), GRIP_R + V((0, -1.1, 0.2))], 0.0022, seg=4)
+add(rod, 'tool:rod', SEAT)
+line = mk.Part('rodline', 'rodtip', 'cord', remesh=False)
+line.tube([ROD_TIP + V((0, -LINE * i / 10, 0)) for i in range(11)], 0.0022, seg=4)
+line.mask('bob', lambda p, n: (ROD_TIP.y - p[1]) / LINE)
 add(line, 'tool:rod')
 
 basket = mk.Part('basket', 'handL', 'wicker', voxel=0.002, smooth=3, tris=160)
@@ -279,10 +303,10 @@ bc = GRIP_L + V((0.01, -0.07, 0.02))
 basket.limb(bc + V((0, -0.045, 0)), bc + V((0, 0.045, 0)), 0.055, 0.07, seg=14, caps=False)
 basket.ellipsoid(bc + V((0, -0.045, 0)), (0.055, 0.012, 0.055))
 basket.ellipsoid(bc + V((0, 0.05, 0)), (0.06, 0.03, 0.06), cut=True)
-add(basket, 'tool:basket')
+add(basket, 'tool:basket', (GRIP_L, lambda o: (o.z, o.y, -o.x)))
 handle = mk.Part('baskethandle', 'handL', 'wicker', remesh=False)
 handle.tube([bc + V((-0.06, 0.04, 0)), bc + V((-0.03, 0.1, 0)), GRIP_L + V((0, 0.0, 0)), bc + V((0.03, 0.1, 0)), bc + V((0.06, 0.04, 0))], 0.005, seg=5)
-add(handle, 'tool:basket')
+add(handle, 'tool:basket', (GRIP_L, lambda o: (o.z, o.y, -o.x)))
 
 # ------------------------------------------------------------------------------------------------ carried goods (held in front of the chest)
 wood = mk.Part('carrywood', 'carry', 'wood', voxel=0.0022, smooth=3, tris=220)
