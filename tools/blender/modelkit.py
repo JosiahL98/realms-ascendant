@@ -143,8 +143,9 @@ class Part:
         if self.smooth:
             _apply(obj, 'SMOOTH', factor=self.smooth_factor, iterations=self.smooth)
         tri_count = sum(len(p.vertices) - 2 for p in obj.data.polygons)
-        if tri_count > self.tris:
-            _apply(obj, 'DECIMATE', decimate_type='COLLAPSE', ratio=self.tris / tri_count, use_collapse_triangulate=True)
+        budget = max(24, int(self.tris * TRI_SCALE))
+        if tri_count > budget:
+            _apply(obj, 'DECIMATE', decimate_type='COLLAPSE', ratio=budget / tri_count, use_collapse_triangulate=True)
         obj.data.shade_smooth()
         obj['bone'] = self.bone
         obj['mat'] = self.mat
@@ -153,6 +154,8 @@ class Part:
 
 
 _MASKS = {}
+#: Multiplies every part's triangle budget (for lighter versions of a model).
+TRI_SCALE = 1.0
 
 
 def hemisphere_dirs(n=64, seed=7):

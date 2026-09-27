@@ -136,15 +136,15 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval · version 3</span>
+    <span class="status">Awaiting your approval · version 4</span>
     <h1>The Horse</h1>
     <p class="lede">The Blender horse, rebuilt with far more anatomy and with legs that bend at the knee, hock and fetlock. It walks, trots and canters with the real order of footfalls, and a hoof on the ground stays put while the body moves over it. The ground here scrolls at the horse's speed so you can check. The horse your cavalry rides today stands alongside for comparison. Nothing has been put into the game yet.</p>
   </header>
 
   <div class="stage" id="stage">
     <canvas id="view" aria-label="3D view of the current horse and the new horse moving over scrolling ground"></canvas>
-    <div class="tag" id="tag-old">In the game now</div>
-    <div class="tag" id="tag-new">New, version 3</div>
+    <div class="tag" id="tag-l">In the game now</div>
+    <div class="tag" id="tag-r">New</div>
     <div class="hint" id="hint">Drag to turn · scroll or pinch to zoom</div>
   </div>
 
@@ -224,10 +224,18 @@
       </div>
     </div>
     <div class="group">
-      <span class="glabel" id="lbl-cmp">Current horse</span>
+      <span class="glabel" id="lbl-cmp">Compare</span>
       <div class="seg" role="group" aria-labelledby="lbl-cmp">
-        <button type="button" id="cmp-on" data-cmp="on">Show</button>
-        <button type="button" id="cmp-off" data-cmp="off">Hide</button>
+        <button type="button" id="cmp-old" data-cmp="old">Current vs new</button>
+        <button type="button" id="cmp-lod" data-cmp="lod">Full vs light</button>
+        <button type="button" id="cmp-off" data-cmp="off">New only</button>
+      </div>
+    </div>
+    <div class="group">
+      <span class="glabel" id="lbl-detail">New horse detail</span>
+      <div class="seg" role="group" aria-labelledby="lbl-detail">
+        <button type="button" id="detail-full" data-detail="full">Full</button>
+        <button type="button" id="detail-light" data-detail="light">Light</button>
       </div>
     </div>
   </div>
@@ -242,9 +250,9 @@
       </dl>
     </div>
     <div class="card">
-      <h2>New, version 3</h2>
+      <h2>New, version 4</h2>
       <dl class="stats">
-        <dt>Triangles</dt><dd id="new-tris">–</dd>
+        <dt>Triangles</dt><dd><span id="new-tris">–</span> in full detail, <span id="light-tris">–</span> in the light version</dd>
         <dt>Legs</dt><dd>three jointed parts each, driven by the gait so hooves plant and joints fold the right way</dd>
         <dt>Built from</dt><dd>anatomy modelled in Blender, fused into one surface, with shading baked into every vertex</dd>
       </dl>
@@ -252,9 +260,10 @@
   </div>
 
   <section class="notes">
-    <h2>Latest change</h2>
+    <h2>Latest changes</h2>
     <ul>
-      <li>The body no longer bobs or rocks. It travels level at a steady height and the legs take up all the motion. To make that possible it rides about 2 cm lower while moving than when standing.</li>
+      <li>The neck, forearms and thighs are now one continuous surface with the body, so there's no gap or crease where they meet. The joins bend smoothly as the head grazes and the legs swing, instead of hinging.</li>
+      <li>A light version for the game: <span class="light-tris-inline">–</span> triangles instead of <span class="full-tris-inline">–</span>. Choose <em>Full vs light</em> under Compare, then <em>True game size</em> to see them as the game will.</li>
     </ul>
   </section>
 
@@ -263,6 +272,7 @@
     <ul>
       <li>Each leg bends: at the knee in front, the hock behind, and the fetlock on all four. In the air the front knees fold back and the hind hocks flex; on the ground the leg straightens under the weight.</li>
       <li>Real gaits: the walk's four beats, the trot's diagonal pairs, and the canter's three beats with a moment in the air.</li>
+      <li>The body travels level at a steady height, without bobbing or rocking. It rides about 2 cm lower while moving than when standing.</li>
       <li>About three times the detail: shoulders, elbows, stifles, hocks, tendons, fetlocks, chestnuts and ergots, heel bulbs, jaw, cheeks, nostrils and hollow ears. The mane and tail are made of separate locks.</li>
       <li>Real coat colours: bays and duns have black legs, mane, tail and muzzle, greys are dappled, and duns have a dark stripe down the back. White blazes and socks are optional.</li>
     </ul>
@@ -271,7 +281,7 @@
   <section class="notes">
     <h2>Before you decide</h2>
     <ul>
-      <li>It costs <span id="tri-ratio">11</span> times the triangles of today's horse. In the game I'd add a lighter version, around 2,500 triangles, for normal zoom, where the two look the same. I'll measure the frame rate before committing.</li>
+      <li>The game would use the light version, about <span id="light-ratio">4</span> times the triangles of today's horse. The full version (<span id="tri-ratio">11</span> times) could be kept for when you zoom all the way in. I'll measure the frame rate before committing.</li>
       <li>In the game each unit's speed picks the gait: the canter for scouts, light cavalry and horse archers, the trot for knights. Hooves stay planted while a unit moves in a straight line. They will still slip a little when it turns or stops, as in most strategy games.</li>
       <li>A foreleg carrying weight slides a couple of centimetres up or down in the shoulder so it stays straight under the level body. Horses have no collarbone, so real shoulders move like this too.</li>
       <li>Camels keep their current model for now.</li>
@@ -286,6 +296,7 @@
 
 <script type="application/json" id="old-rig">%%OLD%%</script>
 <script type="application/json" id="new-horse">%%NEW%%</script>
+<script type="application/json" id="new-light">%%LIGHT%%</script>
 <script>
 %%GAIT%%
 </script>
@@ -295,6 +306,7 @@ import * as THREE from 'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.186.1/
 
 const OLD = JSON.parse(document.getElementById('old-rig').textContent);
 const NEW = JSON.parse(document.getElementById('new-horse').textContent);
+const LIGHT = JSON.parse(document.getElementById('new-light').textContent);
 const HORSE_BONES = new Set(['root', 'body', 'neck', 'legFL', 'legFR', 'legBL', 'legBR', 'tail']);
 const SCOUT_COAT = 0x8a5a32;
 const gait = makeHorseGait(NEW.bones);
@@ -310,12 +322,12 @@ const COATS = [
 ];
 const WHITE = 0xe8e4dc, HOOF = 0x2e2a26, HOOF_PALE = 0x9a8e78, HORN = 0x2a2420, NOSTRIL = 0x140f0c, EYE = 0x0c0907;
 
-const state = { gait: 'canter', rate: 1, view: 'game', size: 'close', rider: 'on', coat: 0, marks: 'off', cmp: 'on', scrub: 0 };
+const state = { gait: 'canter', rate: 1, view: 'game', size: 'close', rider: 'on', coat: 0, marks: 'off', cmp: 'old', detail: 'full', scrub: 0 };
 try {
-  const saved = JSON.parse(localStorage.getItem('horse-review-2') || 'null');
+  const saved = JSON.parse(localStorage.getItem('horse-review-4') || 'null');
   if (saved) Object.assign(state, saved, { rate: saved.rate === 0 ? 1 : saved.rate });
 } catch { /* storage unavailable */ }
-const save = () => { try { localStorage.setItem('horse-review-2', JSON.stringify(state)); } catch { /* ignore */ } };
+const save = () => { try { localStorage.setItem('horse-review-4', JSON.stringify(state)); } catch { /* ignore */ } };
 
 const stage = document.getElementById('stage');
 const canvas = document.getElementById('view');
@@ -438,52 +450,114 @@ for (const p of OLD.parts) {
   } else riders.push(mesh);
 }
 
-// ---- new horse: absolute bone pivots, parts relative to their bone's pivot
-const newRig = { root: new THREE.Group(), groups: {} };
-const pivot = {};
-NEW.bones.forEach((b) => { pivot[b.name] = new THREE.Vector3(...b.pivot); });
-NEW.bones.forEach((b) => {
-  const g = new THREE.Group();
-  g.position.copy(pivot[b.name]).sub(b.parent ? pivot[b.parent] : new THREE.Vector3());
-  g.userData.rest = g.position.clone();
-  newRig.groups[b.name] = g;
-});
-NEW.bones.forEach((b) => (b.parent ? newRig.groups[b.parent] : newRig.root).add(newRig.groups[b.name]));
-const newParts = [];
-for (const p of NEW.parts) {
-  const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
-  g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
-  g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(p.ao.length * 3), 3));
-  g.setIndex(p.idx);
-  addMesh(newRig.groups[p.bone], g);
-  newParts.push({ g, p });
+// ---- new horse. Bone pivots are absolute and parts sit relative to their bone's pivot. The body mesh (with the
+// neck, head, forearms and thighs) is skinned: each vertex turns about one of five joints by (weight x joint angle),
+// so the joins bend smoothly instead of hinging. The cannons and hooves are rigid parts on their own bones.
+const SKIN_BONES = ['neck', 'legFL', 'legFR', 'legBL', 'legBR'];
+const bodyPivot = new THREE.Vector3(...NEW.bones.find((b) => b.name === 'body').pivot);
+const skinUniforms = {
+  uSkinRot: { value: SKIN_BONES.map(() => 0) },
+  uSkinLift: { value: SKIN_BONES.map(() => 0) },
+  uSkinPivot: { value: SKIN_BONES.map((n) => new THREE.Vector3(...NEW.bones.find((b) => b.name === n).pivot).sub(bodyPivot)) },
+};
+const SKIN_GLSL = `
+attribute float skinW;
+attribute float skinIdx;
+uniform float uSkinRot[5];
+uniform float uSkinLift[5];
+uniform vec3 uSkinPivot[5];
+mat3 skinRot() {
+  float a = uSkinRot[int(skinIdx + 0.5)] * skinW;
+  float c = cos(a), s = sin(a);
+  return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c);
 }
-{
+`;
+function addSkinning(material, key) {
+  material.onBeforeCompile = (sh) => {
+    Object.assign(sh.uniforms, skinUniforms);
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\n' + SKIN_GLSL)
+      .replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\nobjectNormal = skinRot() * objectNormal;')
+      .replace('#include <begin_vertex>', `#include <begin_vertex>
+        {
+          int si = int(skinIdx + 0.5);
+          vec3 pv = uSkinPivot[si];
+          transformed = pv + skinRot() * (transformed - pv) + vec3(0.0, uSkinLift[si] * skinW, 0.0);
+        }`);
+  };
+  material.customProgramCacheKey = () => key;
+  return material;
+}
+const skinMat = addSkinning(new THREE.MeshLambertMaterial({ vertexColors: true }), 'horse-skin');
+const skinDepth = addSkinning(new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking }), 'horse-skin-depth');
+
+function buildNewRig(DATA) {
+  const rig = { root: new THREE.Group(), groups: {}, parts: [] };
+  const pivot = {};
+  DATA.bones.forEach((b) => { pivot[b.name] = new THREE.Vector3(...b.pivot); });
+  DATA.bones.forEach((b) => {
+    const g = new THREE.Group();
+    g.position.copy(pivot[b.name]).sub(b.parent ? pivot[b.parent] : new THREE.Vector3());
+    g.userData.rest = g.position.clone();
+    rig.groups[b.name] = g;
+  });
+  DATA.bones.forEach((b) => (b.parent ? rig.groups[b.parent] : rig.root).add(rig.groups[b.name]));
+  for (const p of DATA.parts) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(p.ao.length * 3), 3));
+    g.setIndex(p.idx);
+    const m = p.masks || {};
+    const skinned = SKIN_BONES.some((k) => m[k]);
+    const mesh = addMesh(rig.groups[p.bone], g);
+    if (skinned) {
+      const n = p.ao.length, w = new Float32Array(n), idx = new Float32Array(n);
+      for (let i = 0; i < n; i++) {
+        SKIN_BONES.forEach((k, j) => {
+          const v = m[k] ? m[k][i] : 0;
+          if (v > w[i]) { w[i] = v; idx[i] = j; }
+        });
+      }
+      g.setAttribute('skinW', new THREE.BufferAttribute(w, 1));
+      g.setAttribute('skinIdx', new THREE.BufferAttribute(idx, 1));
+      mesh.material = skinMat;
+      mesh.customDepthMaterial = skinDepth;
+    }
+    rig.parts.push({ g, p });
+  }
   const saddle = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.05, 0.22), new THREE.MeshLambertMaterial({ color: 0x6a4a2a }));
   saddle.position.set(0, 0.2 + 0.025, -0.04);
   saddle.castShadow = true;
-  newRig.groups.body.add(saddle);
-}
-// the same scout rides the new horse; rider bones hang off the body bone in both rigs
-{
+  rig.groups.body.add(saddle);
+  // the same scout rides the new horse; rider bones hang off the body bone in both rigs
   const riderRoot = OLD.bones.filter((b) => !HORSE_BONES.has(b.name) && OLD.bones[b.parent] && OLD.bones[b.parent].name === 'body');
   for (const rb of riderRoot) {
     const clone = oldRig.groups[rb.name].clone(true);
-    newRig.groups.body.add(clone);
+    rig.groups.body.add(clone);
     clone.traverse((o) => { if (o.isMesh) riders.push(o); });
   }
+  return rig;
 }
+const fullRig = buildNewRig(NEW);
+const lightRig = buildNewRig(LIGHT);
+const primaryRig = () => (state.detail === 'light' ? lightRig : fullRig);
 
 const countTris = (parts, test) => parts.reduce((a, p) => a + (test(p) ? (p.idx ? p.idx.length : p.pos.length / 3) / 3 : 0), 0);
 const oldTris = countTris(OLD.parts, (p) => HORSE_BONES.has(p.bone));
 const newTris = countTris(NEW.parts, () => true);
-document.getElementById('old-tris').textContent = oldTris.toLocaleString('en-US');
-document.getElementById('new-tris').textContent = newTris.toLocaleString('en-US');
+const lightTris = countTris(LIGHT.parts, () => true);
+const fmt = (n) => n.toLocaleString('en-US');
+document.getElementById('old-tris').textContent = fmt(oldTris);
+document.getElementById('new-tris').textContent = fmt(newTris);
+document.getElementById('light-tris').textContent = fmt(lightTris);
+document.querySelectorAll('.light-tris-inline').forEach((e) => { e.textContent = fmt(lightTris); });
+document.querySelectorAll('.full-tris-inline').forEach((e) => { e.textContent = fmt(newTris); });
 document.getElementById('tri-ratio').textContent = String(Math.round(newTris / oldTris));
+document.getElementById('light-ratio').textContent = String(Math.round(lightTris / oldTris));
 
 const RIGHT = new THREE.Vector3(Math.SQRT1_2, 0, -Math.SQRT1_2);
-scene.add(oldRig.root, newRig.root);
+scene.add(oldRig.root, fullRig.root, lightRig.root);
 
 function colorize() {
   const C = COATS[state.coat];
@@ -498,7 +572,7 @@ function colorize() {
   const dapple = C.dapple ? lin(C.dapple) : null, stripe = C.stripe ? lin(C.stripe) : null;
   const white = lin(WHITE), hoof = lin(HOOF), hoofPale = lin(HOOF_PALE), horn = lin(HORN), nostril = lin(NOSTRIL), eye = lin(EYE);
   const c = new THREE.Color();
-  for (const { g, p } of newParts) {
+  for (const { g, p } of [...fullRig.parts, ...lightRig.parts]) {
     const col = g.getAttribute('color'), m = p.masks || {};
     const socked = marks && (p.bone.startsWith('legFL') || p.bone.startsWith('legBL'));
     for (let i = 0; i < p.ao.length; i++) {
@@ -543,6 +617,15 @@ function lerpPose(a, b, k) {
     for (const f of ['rx', 'rz', 'py']) out[key][f] = (pa[f] || 0) + ((pb[f] || 0) - (pa[f] || 0)) * k;
   }
   return out;
+}
+/** Poses both new rigs and feeds the skinned joints' angles and lifts to the shader. */
+function applyNewPose(pose) {
+  applyPose(fullRig, pose);
+  applyPose(lightRig, pose);
+  SKIN_BONES.forEach((k, j) => {
+    skinUniforms.uSkinRot.value[j] = pose[k] ? pose[k].rx || 0 : 0;
+    skinUniforms.uSkinLift.value[j] = pose[k] ? pose[k].py || 0 : 0;
+  });
 }
 function applyPose(rig, pose) {
   for (const [name, grp] of Object.entries(rig.groups)) {
@@ -685,18 +768,25 @@ function sync() {
   pressed('[data-marks]', 'marks', state.marks);
   pressed('[data-rider]', 'rider', state.rider);
   pressed('[data-cmp]', 'cmp', state.cmp);
+  pressed('[data-detail]', 'detail', state.detail);
   document.querySelectorAll('[data-size]').forEach((b) => { b.disabled = state.view === 'orbit'; });
   document.querySelectorAll('[data-cmp]').forEach((b) => { b.disabled = state.view === 'side'; });
+  document.querySelectorAll('[data-detail]').forEach((b) => { b.disabled = state.cmp === 'lod' && state.view !== 'side'; });
   document.getElementById('scrub-group').hidden = !(state.rate === 0 && GAITS[state.gait]);
   for (const m of riders) m.visible = state.rider === 'on';
-  const both = state.cmp === 'on' && state.view !== 'side';
-  oldRig.root.visible = both;
-  if (both) {
-    oldRig.root.position.copy(RIGHT).multiplyScalar(-0.95);
-    newRig.root.position.copy(RIGHT).multiplyScalar(0.95);
-  } else {
-    newRig.root.position.set(0, 0, 0);
-  }
+  // who stands where: left and right when comparing, the chosen new horse alone otherwise
+  const mode = state.view === 'side' ? 'off' : state.cmp;
+  const [left, right] = mode === 'old' ? [oldRig, primaryRig()] : mode === 'lod' ? [fullRig, lightRig] : [null, primaryRig()];
+  for (const rig of [oldRig, fullRig, lightRig]) rig.root.visible = rig === left || rig === right;
+  if (left) {
+    left.root.position.copy(RIGHT).multiplyScalar(-0.95);
+    right.root.position.copy(RIGHT).multiplyScalar(0.95);
+  } else right.root.position.set(0, 0, 0);
+  tagL.rig = left;
+  tagR.rig = right;
+  const label = (rig) => (rig === oldRig ? 'In the game now' : mode === 'lod' ? (rig === fullRig ? 'Full detail' : 'Light version') : rig === lightRig ? 'New, light version' : 'New, full detail');
+  if (left) tagL.el.textContent = label(left);
+  tagR.el.textContent = label(right);
   colorize();
   drawFootfalls();
   layoutCameras();
@@ -717,6 +807,7 @@ document.addEventListener('click', (e) => {
   else if (b.dataset.marks) setState({ marks: b.dataset.marks });
   else if (b.dataset.rider) setState({ rider: b.dataset.rider });
   else if (b.dataset.cmp) setState({ cmp: b.dataset.cmp });
+  else if (b.dataset.detail) setState({ detail: b.dataset.detail });
 });
 const scrubInput = document.getElementById('scrub'), scrubOut = document.getElementById('scrub-out');
 scrubInput.addEventListener('input', () => {
@@ -725,13 +816,15 @@ scrubInput.addEventListener('input', () => {
 });
 new ResizeObserver(() => { layoutCameras(); drawFootfalls(); }).observe(stage);
 
-const tagOld = document.getElementById('tag-old'), tagNew = document.getElementById('tag-new');
+const tagL = { el: document.getElementById('tag-l'), rig: null }, tagR = { el: document.getElementById('tag-r'), rig: null };
 const tmp = new THREE.Vector3();
-function placeTag(el, rig, cam) {
+function placeTag(tag, cam) {
+  const rig = tag.rig;
+  if (!rig || !rig.root.visible || state.view === 'side') { tag.el.hidden = true; return; }
   tmp.copy(rig.root.position).project(cam);
-  el.style.left = ((tmp.x + 1) / 2) * stage.clientWidth + 'px';
-  el.style.top = ((1 - tmp.y) / 2) * stage.clientHeight + 'px';
-  el.hidden = !rig.root.visible || state.view === 'side' || tmp.z > 1;
+  tag.el.style.left = ((tmp.x + 1) / 2) * stage.clientWidth + 'px';
+  tag.el.style.top = ((1 - tmp.y) / 2) * stage.clientHeight + 'px';
+  tag.el.hidden = tmp.z > 1;
 }
 
 // ---- main loop: `clock` is animation time (scaled by the playback rate)
@@ -748,7 +841,7 @@ function poseAt(t) {
     pOld = lerpPose(oldPose(blendFrom, t), pOld, e);
     if (k >= 1) blendFrom = null;
   }
-  applyPose(newRig, pNew);
+  applyNewPose(pNew);
   applyPose(oldRig, pOld);
 }
 
@@ -773,8 +866,8 @@ function frame(now) {
   let cam = gameCam;
   if (state.view === 'orbit') { placeOrbit(); cam = orbitCam; }
   renderer.render(scene, cam);
-  placeTag(tagOld, oldRig, cam);
-  placeTag(tagNew, newRig, cam);
+  placeTag(tagL, cam);
+  placeTag(tagR, cam);
   requestAnimationFrame(frame);
 }
 sync();
@@ -783,7 +876,7 @@ scrubOut.value = scrubInput.value + '%';
 requestAnimationFrame(frame);
 
 // frame-by-frame check used while building this page: n poses of a gait from the side, laid out in a row
-window.__filmstrip = (name, n = 8, w = 360, h = 300, view = 'side') => {
+window.__filmstrip = (name, n = 8, w = 360, h = 300, view = 'side', half = 0.95, cy = 0.05, cz = 0) => {
   const saved = { ...state };
   Object.assign(state, { view, cmp: 'off', size: 'close', gait: name });
   blendFrom = null;
@@ -794,13 +887,13 @@ window.__filmstrip = (name, n = 8, w = 360, h = 300, view = 'side') => {
   const ctx = out.getContext('2d');
   const g = GAITS[name];
   renderer.setSize(w, h, false);
-  const aspect = w / h, half = 0.95;
+  const aspect = w / h;
   const cam = gameCam;
-  cam.left = -half * aspect; cam.right = half * aspect; cam.top = half + 0.05; cam.bottom = -half + 0.05;
+  cam.left = -half * aspect + cz; cam.right = half * aspect + cz; cam.top = half + cy; cam.bottom = -half + cy;
   cam.updateProjectionMatrix();
   for (let i = 0; i < n; i++) {
     const t = g ? i / n / g.freq : i * 0.5;
-    applyPose(newRig, newPose(name, t));
+    applyNewPose(newPose(name, t));
     groundTex.offset.set(0, frac((g ? -g.speed * t : 0) / 4));
     renderer.render(scene, cam);
     ctx.drawImage(renderer.domElement, i * w, 0, w, h);
