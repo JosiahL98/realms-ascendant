@@ -41,7 +41,15 @@ export interface BakedRig {
   bones: BakedBone[];
   parts: BakedPart[];
   clips: Map<string, BakedClip>;
-  meta: { walkSpeed?: number; attackHit: number; gaits?: Record<string, { speed: number }>; bend?: string[] };
+  meta: {
+    kind?: 'villager' | 'scout' | 'soldier';
+    walkSpeed?: number;
+    attackHit: number;
+    gaits?: Record<string, { speed: number }>;
+    bend?: string[];
+    /** Build of the body (bulkier barbarians). */
+    scale?: number;
+  };
   /** Bone index by name. */
   b: Record<string, number>;
   /** For 'bend' skinning: the neck and upper-leg joints (relative to the body bone) and their bone indices. */
@@ -62,24 +70,45 @@ function decode(b64: string): Int16Array {
 }
 
 interface RawPart {
-  bone: number; pc: boolean; variant: string; pos: number[]; nrm: number[]; col: number[]; idx: number[];
-  skin?: 'lbs' | 'bend'; skinBones?: number[]; w?: number[]; si?: number[];
+  bone: number; pc: boolean; variant: string;
+  // plain arrays, or (enc 1) base64 typed arrays: positions int16 / 8192, normals int8 / 127, colours and weights
+  // uint8 / 255, indices uint16
+  pos: number[] | string; nrm: number[] | string; col: number[] | string; idx: number[] | string;
+  skin?: 'lbs' | 'bend'; skinBones?: number[]; w?: number[] | string; si?: number[] | string;
 }
 interface RawClip { dur: number; fps: number; frames: number; loop: boolean; statics: number[][]; bones: number[]; data: string }
-interface RawRig { id: string; height: number; bones: BakedBone[]; parts: RawPart[]; clips: Record<string, RawClip>; meta: BakedRig['meta'] }
+interface RawRig { id: string; height: number; enc?: number; bones: BakedBone[]; parts: RawPart[]; clips: Record<string, RawClip>; meta: BakedRig['meta'] }
+
+function bytes(b64: string): ArrayBuffer {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+/** A packed array as floats (with its scale), or a plain array as it is. */
+function floats(v: number[] | string, kind: 'i16' | 'i8' | 'u8', scale: number): Float32Array {
+  if (typeof v !== 'string') return Float32Array.from(v);
+  const b = bytes(v);
+  const src = kind === 'i16' ? new Int16Array(b) : kind === 'i8' ? new Int8Array(b) : new Uint8Array(b);
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++) out[i] = src[i] / scale;
+  return out;
+}
+const ints = (v: number[] | string): number[] | Uint16Array => (typeof v === 'string' ? new Uint16Array(bytes(v)) : v);
 
 function build(raw: RawRig): BakedRig {
   const b = Object.fromEntries(raw.bones.map((bn, i) => [bn.name, i]));
   const parts: BakedPart[] = raw.parts.map((p) => {
     const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.Float32BufferAttribute(p.pos, 3));
-    geo.setAttribute('normal', new THREE.Float32BufferAttribute(p.nrm, 3));
-    geo.setAttribute('color', new THREE.Float32BufferAttribute(p.col, 3));
-    geo.setIndex(p.idx);
-    if (p.skin === 'lbs') geo.setAttribute('skinW', new THREE.Float32BufferAttribute(p.w!, 2));
+    geo.setAttribute('position', new THREE.BufferAttribute(floats(p.pos, 'i16', 8192), 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(floats(p.nrm, 'i8', 127), 3));
+    geo.setAttribute('color', new THREE.BufferAttribute(floats(p.col, 'u8', 255), 3));
+    const idx = ints(p.idx);
+    geo.setIndex(new THREE.BufferAttribute(idx instanceof Uint16Array ? idx : Uint32Array.from(idx), 1));
+    if (p.skin === 'lbs') geo.setAttribute('skinW', new THREE.BufferAttribute(floats(p.w!, 'u8', 255), 2));
     if (p.skin === 'bend') {
-      geo.setAttribute('skinW', new THREE.Float32BufferAttribute(p.w!, 1));
-      geo.setAttribute('skinIdx', new THREE.Float32BufferAttribute(p.si!, 1));
+      geo.setAttribute('skinW', new THREE.BufferAttribute(floats(p.w!, 'u8', 255), 1));
+      geo.setAttribute('skinIdx', new THREE.BufferAttribute(floats(p.si!, 'u8', 1), 1));
     }
     geo.computeBoundingSphere();
     return { bone: p.bone, pc: p.pc, variant: p.variant, geo, skin: p.skin ?? '', skinBones: p.skinBones ?? [] };
@@ -99,7 +128,14 @@ function build(raw: RawRig): BakedRig {
 /** Loads the baked units (at game start). Missing files leave those units on their procedural models. */
 export async function loadBakedRigs(): Promise<void> {
   const base = import.meta.env.BASE_URL ?? '/';
-  await Promise.all(['villager', 'villagerF', 'scout'].map(async (id) => {
+  let ids: string[] = ['villager', 'villagerF', 'scout'];
+  try {
+    const res = await fetch(`${base}units/index.json`);
+    if (res.ok) ids = await res.json() as string[];
+  } catch {
+    // use the default list
+  }
+  await Promise.all(ids.map(async (id) => {
     if (rigs.has(id)) return;
     try {
       const res = await fetch(`${base}units/${id}.json`);

@@ -118,7 +118,8 @@ export class BakedUnits {
 
   /** Draws one unit (or corpse) of a baked model. */
   draw(rig: BakedRig, x: number, y: number, z: number, facing: number, st: AnimState, color: number,
-    carry: string | null, working: boolean, scale: number): void {
+    carry: string | null, working: boolean, scale: number, relic = false): void {
+    scale *= rig.meta.scale ?? 1;
     const b = this.batch(rig);
     if (b.count >= b.capacity) this.grow(b, b.capacity * 2);
     b.count++;
@@ -126,7 +127,7 @@ export class BakedUnits {
     if (this.pose.length < nb * BAKED_STRIDE) this.pose = new Float32Array(nb * BAKED_STRIDE);
     while (this.world.length < nb) this.world.push(new THREE.Matrix4());
     restPose(this.pose, nb);
-    for (const [clip, t] of pickClips(rig, st, carry)) sampleClip(clip, t, this.pose);
+    for (const [clip, t] of pickClips(rig, st, carry, relic)) sampleClip(clip, t, this.pose);
 
     // bones
     this.q.setFromAxisAngle(THREE.Object3D.DEFAULT_UP, facing);
@@ -150,6 +151,7 @@ export class BakedUnits {
       let show = true;
       if (part.variant.startsWith('tool:')) show = !carry && st.tool === part.variant.slice(5);
       else if (part.variant.startsWith('carry:')) show = !working && carry === part.variant.slice(6);
+      else if (part.variant === 'relic') show = relic;
       if (!show) continue;
       const idx = b.counts[k]++;
       mesh.setMatrixAt(idx, this.world[part.bone]);
@@ -200,8 +202,30 @@ function clip(rig: BakedRig, name: string): BakedClip | undefined {
   return rig.clips.get(name);
 }
 
-function pickClips(rig: BakedRig, st: AnimState, carry: string | null): Layer[] {
-  return rig.id === 'scout' ? scoutClips(rig, st) : villagerClips(rig, st, carry);
+function pickClips(rig: BakedRig, st: AnimState, carry: string | null, relic: boolean): Layer[] {
+  const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
+  if (kind === 'scout') return scoutClips(rig, st);
+  if (kind === 'soldier') return soldierClips(rig, st, relic);
+  return villagerClips(rig, st, carry);
+}
+
+function soldierClips(rig: BakedRig, st: AnimState, relic: boolean): Layer[] {
+  const out: Layer[] = [];
+  const push = (name: string, t: number) => {
+    const c = clip(rig, name);
+    if (c) out.push([c, t]);
+  };
+  if (st.anim === 'die') push('die', st.t);
+  else if (st.anim === 'attack' && rig.clips.has('attack')) push('attack', st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay)));
+  else if (st.anim === 'work' && !st.moving && rig.clips.has('work')) push('work', st.t + st.seed);
+  else {
+    // a priest carrying a relic holds it in both arms
+    const carrying = relic && rig.clips.has('carryWalk');
+    const walkT = st.time * (st.speed / (rig.meta.walkSpeed ?? 0.8)) + st.seed;
+    if (st.moving) push(carrying ? 'carryWalk' : 'walk', walkT);
+    else push(carrying ? 'carryIdle' : 'idle', st.time + st.seed * 7);
+  }
+  return out;
 }
 
 function villagerClips(rig: BakedRig, st: AnimState, carry: string | null): Layer[] {

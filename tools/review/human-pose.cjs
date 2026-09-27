@@ -623,16 +623,37 @@ function makeHumanPose(THREE, bones, opts = {}) {
     }
     plantFeet(out, feet);
     for (const arm of arms) {
-      const dir = V3(k.arm).multiply(new THREE.Vector3(arm.side === 'L' ? 1 : -1, 1, 1));
+      // a shield arm falls wider, so the shield lies clear of the body
+      const a = arm.side === 'L' && WEAPON && SHIELD ? [0.97, -0.1, -0.22].map((x, i) => k.arm[i] + (x - k.arm[i]) * fall) : k.arm;
+      const dir = V3(a).multiply(new THREE.Vector3(arm.side === 'L' ? 1 : -1, 1, 1));
       out['arm' + arm.side] = { q: fromTo(arm.E.clone().sub(arm.S), dir).toArray() };
       out['elbow' + arm.side] = { q: qx(-k.elbow).toArray() };
     }
-    // the hand goes limp and the tool drops flat on the ground beside it, its head face up
+    // the hand goes limp and the tool drops flat on the ground beside it, its head face up; a soldier's weapon falls
+    // along his side (a long pike laid across him would pass through him)
     if (tool && tool !== 'basket') {
       const W = fk(out);
-      const lying = handFrame(V3([-1, 0, 0.35]), V3([0, 1, 0]), seatOf(tool));
+      const lying = handFrame(V3(tool === 'weapon' ? [-0.2, 0, 1] : [-1, 0, 0.35]), V3([0, 1, 0]), seatOf(tool));
       const local = W.q.elbowR.clone().invert().multiply(lying);
       out.handR = { q: new THREE.Quaternion().slerp(local, ss(0.55, 0.95, fall)).toArray() };
+    }
+    // a shield-bearer falls from his shield hold: the shield arm blends from the hold into the fall
+    if (WEAPON && SHIELD) {
+      const held = { ...out };
+      // as the knees give, the shield comes up and out, clear of the rising thigh
+      holdShield(held, [], true, 0.07 * ss(0.0, 0.2, u));
+      const w = ss(0.25, 0.7, u);
+      for (const k of ['armL', 'elbowL', 'handL']) {
+        const q0 = new THREE.Quaternion().fromArray(held[k].q), q1 = new THREE.Quaternion().fromArray(out[k] ? out[k].q : [0, 0, 0, 1]);
+        out[k] = { q: q0.slerp(q1, w).toArray() };
+      }
+    }
+    // a shield falls flat, face up; a bow lies along the ground
+    if (WEAPON && (SHIELD || BOW)) {
+      const W = fk(out);
+      const lying = SHIELD ? handPoint(V3([1, 0, -0.3]), V3([0.3, 0, 1])) : handPoint(V3([1, 0, 0]), V3([0, 0, 1]));
+      const local = W.q.elbowL.clone().invert().multiply(lying);
+      out.handL = { q: new THREE.Quaternion().slerp(local, ss(0.55, 0.95, fall)).toArray() };
     }
     if (tool === 'rod') hangLine(out);
     // on the ground the cloth no longer swings with the thighs: it lies where the body falls
@@ -682,7 +703,7 @@ function makeHumanPose(THREE, bones, opts = {}) {
     halberd: { g: [-0.15, 0.5, 0.1], d: [0, 0.88, 0.47] },
     fireLance: { g: [-0.15, 0.5, 0.1], d: [0, 0.8, 0.6] },
     javelin: { g: [-0.15, 0.5, 0.1], d: [0, 0.8, 0.6] },
-    staff: { g: [-0.15, 0.5, 0.12], d: [0, 0.92, 0.38] },
+    staff: { g: [-0.2, 0.5, 0.16], d: [0.12, 0.92, 0.37] },
     crossbow: { g: [-0.15, 0.42, 0.08], d: [0, -0.4, 0.92] },
     gun: { g: [-0.15, 0.5, 0.1], d: [0, 0.85, 0.52] },
     bow: { lg: [0.17, 0.42, 0.06], ld: [0, 0.94, 0.33] },
@@ -692,11 +713,12 @@ function makeHumanPose(THREE, bones, opts = {}) {
   const BOW = WEAPON === 'bow' || WEAPON === 'longbow';
 
   /** The left hand holding the shield (in the trunk's frame when `torso`). */
-  function holdShield(out, diag, torso) {
+  function holdShield(out, diag, torso, raise = 0) {
     const W = fk(out);
     const tr = (a) => (torso ? fromRest(W, 'torso', V3(a)) : V3(a));
     const dir = (a) => (torso ? V3(a).applyQuaternion(W.q.torso) : V3(a));
-    reach(out, 'L', tr(SHIELD_HOLD.lg), handPoint(dir(SHIELD_HOLD.ld), dir(SHIELD_HOLD.lu)), V3([0.8, -1, -0.3]), diag);
+    const lg = [SHIELD_HOLD.lg[0] + raise * 0.5, SHIELD_HOLD.lg[1] + raise, SHIELD_HOLD.lg[2]];
+    reach(out, 'L', tr(lg), handPoint(dir(SHIELD_HOLD.ld), dir(SHIELD_HOLD.lu)), V3([0.8, -1, -0.3]), diag);
   }
 
   /** Standing or walking with the weapon (and shield). */
@@ -739,8 +761,8 @@ function makeHumanPose(THREE, bones, opts = {}) {
     // two hands: a long thrust (pike, fire lance)
     lunge: track([
       [0.0, { g: [-0.14, 0.5, 0.0], d: [0.08, 0.06, 1], drop: 0.03, lean: 0.08, twist: -0.2 }],
-      [0.4, { g: [-0.15, 0.52, -0.1], d: [0.08, 0.06, 1], drop: 0.04, lean: 0.0, twist: -0.3 }],
-      [0.5, { g: [-0.11, 0.52, 0.16], d: [0.08, 0.02, 1], drop: 0.05, lean: 0.22, twist: -0.05, stop: 1 }],
+      [0.4, { g: [-0.15, 0.52, -0.1], d: [0.08, 0.06, 1], drop: 0.035, lean: 0.0, twist: -0.3 }],
+      [0.5, { g: [-0.11, 0.52, 0.16], d: [0.08, 0.02, 1], drop: 0.035, lean: 0.2, twist: -0.05, stop: 1 }],
       [0.7, { g: [-0.13, 0.51, 0.06], d: [0.08, 0.05, 1], drop: 0.04, lean: 0.12, twist: -0.15 }],
       [1.0, { g: [-0.14, 0.5, 0.0], d: [0.08, 0.06, 1], drop: 0.03, lean: 0.08, twist: -0.2 }],
     ], false),
@@ -752,39 +774,47 @@ function makeHumanPose(THREE, bones, opts = {}) {
       [0.7, { g: [-0.08, 0.47, 0.26], d: [0.4, 0.3, 0.86], drop: 0.035, lean: 0.18, twist: 0.05 }],
       [1.0, { g: [-0.12, 0.5, 0.2], d: [0, 0.88, 0.47], drop: 0.02, lean: 0.05, twist: 0 }],
     ], false),
+    // two hands wide on a pole: a chop from over the right shoulder (halberd)
+    polechop: track([
+      [0.0, { g: [-0.13, 0.48, 0.12], d: [0.05, 0.9, 0.43], drop: 0.02, lean: 0.05, twist: 0 }],
+      [0.4, { g: [-0.16, 0.62, 0.16], d: [-0.1, 0.85, -0.5], drop: 0.015, lean: -0.02, twist: -0.3 }],
+      [0.5, { g: [-0.1, 0.5, 0.16], d: [0.15, 0.2, 0.97], drop: 0.04, lean: 0.25, twist: 0.1, stop: 1 }],
+      [0.7, { g: [-0.11, 0.49, 0.15], d: [0.1, 0.5, 0.86], drop: 0.035, lean: 0.18, twist: 0.05 }],
+      [1.0, { g: [-0.13, 0.48, 0.12], d: [0.05, 0.9, 0.43], drop: 0.02, lean: 0.05, twist: 0 }],
+    ], false),
     // a throw (javelin)
     throw: track([
-      [0.0, { g: [-0.16, 0.55, 0.1], d: [0, 0.5, 0.87], drop: 0.02, lean: 0.03, twist: 0, lg: [0.14, 0.55, 0.2], ld: [0, -0.2, 1] }],
-      [0.4, { g: [-0.17, 0.84, -0.1], d: [0, 0.18, 1], drop: 0.02, lean: -0.08, twist: -0.4, lg: [0.16, 0.72, 0.28], ld: [0, 0, 1] }],
-      [0.5, { g: [-0.1, 0.76, 0.26], d: [0, 0.05, 1], drop: 0.04, lean: 0.15, twist: 0.2, lg: [0.16, 0.55, 0.1], ld: [0, -0.5, 0.8], stop: 1 }],
-      [0.7, { g: [-0.08, 0.55, 0.28], d: [0, -0.3, 0.95], drop: 0.035, lean: 0.2, twist: 0.15, lg: [0.15, 0.52, 0.12], ld: [0, -0.5, 0.8] }],
-      [1.0, { g: [-0.16, 0.55, 0.1], d: [0, 0.5, 0.87], drop: 0.02, lean: 0.03, twist: 0, lg: [0.14, 0.55, 0.2], ld: [0, -0.2, 1] }],
+      [0.0, { g: [-0.19, 0.55, 0.12], d: [0.1, 0.5, 0.86], drop: 0.02, lean: 0.03, twist: 0, lg: [0.14, 0.55, 0.2], ld: [0, -0.2, 1] }],
+      [0.4, { g: [-0.24, 0.82, -0.08], d: [0.15, 0.25, 0.96], drop: 0.02, lean: -0.08, twist: -0.4, lg: [0.16, 0.72, 0.28], ld: [0, 0, 1] }],
+      [0.5, { g: [-0.12, 0.76, 0.26], d: [0.05, 0.2, 0.98], drop: 0.04, lean: 0.15, twist: 0.2, lg: [0.16, 0.55, 0.1], ld: [0, -0.5, 0.8], stop: 1 }],
+      [0.7, { g: [-0.12, 0.6, 0.26], d: [0.1, 0.5, 0.86], drop: 0.035, lean: 0.2, twist: 0.15, lg: [0.15, 0.52, 0.12], ld: [0, -0.5, 0.8] }],
+      [1.0, { g: [-0.19, 0.55, 0.12], d: [0.1, 0.5, 0.86], drop: 0.02, lean: 0.03, twist: 0, lg: [0.14, 0.55, 0.2], ld: [0, -0.2, 1] }],
     ], false),
-    // aim and shoot (crossbow, hand cannon): the stock at the shoulder, the left hand under the front
+    // aim and shoot (crossbow, hand cannon): the butt at the front of the shoulder, the left hand under the stock
     aim: track([
-      [0.0, { g: [-0.15, 0.45, 0.1], d: [0, -0.3, 0.95], drop: 0.02, lean: 0.03, twist: 0 }],
-      [0.3, { g: [-0.1, 0.68, 0.14], d: [0.05, 0.02, 1], drop: 0.03, lean: 0.06, twist: -0.15 }],
-      [0.5, { g: [-0.1, 0.69, 0.14], d: [0.05, 0.02, 1], drop: 0.03, lean: 0.06, twist: -0.15, stop: 1 }],
-      [0.58, { g: [-0.1, 0.7, 0.1], d: [0.05, 0.14, 0.99], drop: 0.03, lean: 0.0, twist: -0.15 }],
-      [0.85, { g: [-0.13, 0.52, 0.12], d: [0, -0.2, 0.98], drop: 0.02, lean: 0.03, twist: 0 }],
-      [1.0, { g: [-0.15, 0.45, 0.1], d: [0, -0.3, 0.95], drop: 0.02, lean: 0.03, twist: 0 }],
+      [0.0, { g: [-0.15, 0.45, 0.12], d: [0, -0.3, 0.95], drop: 0.02, lean: 0.03, twist: 0 }],
+      [0.3, { g: [-0.11, 0.64, 0.24], d: [0.08, 0.02, 1], drop: 0.03, lean: 0.06, twist: -0.12 }],
+      [0.5, { g: [-0.11, 0.65, 0.24], d: [0.08, 0.02, 1], drop: 0.03, lean: 0.06, twist: -0.12, stop: 1 }],
+      [0.58, { g: [-0.11, 0.66, 0.21], d: [0.08, 0.14, 0.99], drop: 0.03, lean: 0.02, twist: -0.12 }],
+      [0.85, { g: [-0.13, 0.52, 0.16], d: [0, -0.2, 0.98], drop: 0.02, lean: 0.03, twist: 0 }],
+      [1.0, { g: [-0.15, 0.45, 0.12], d: [0, -0.3, 0.95], drop: 0.02, lean: 0.03, twist: 0 }],
     ], false),
     // draw and loose (bow): the left arm holds the bow out, the right hand draws the string to the cheek
     draw: track([
       [0.0, { lg: [0.16, 0.45, 0.12], ld: [0, 0.94, 0.33], rg: [-0.14, 0.45, 0.1], rd: [0, -1, 0.2], nock: 0, drop: 0.02, lean: 0.02, twist: 0 }],
       [0.25, { lg: [0.07, 0.72, 0.36], ld: [0, 1, 0.08], rg: [0.03, 0.73, 0.3], rd: [0.2, -0.2, 1], nock: 1, drop: 0.03, lean: 0.03, twist: -0.55 }],
-      [0.47, { lg: [0.07, 0.73, 0.37], ld: [0, 1, 0.06], rg: [-0.03, 0.78, 0.06], rd: [0.5, -0.1, 0.85], nock: 1, drop: 0.03, lean: 0.02, twist: -0.6 }],
-      [0.5, { lg: [0.07, 0.73, 0.37], ld: [0, 1, 0.06], rg: [-0.05, 0.79, 0.02], rd: [0.5, -0.1, 0.85], nock: 0, drop: 0.03, lean: 0.02, twist: -0.6, stop: 1 }],
+      [0.47, { lg: [0.07, 0.73, 0.37], ld: [0, 1, 0.06], rg: [-0.08, 0.77, 0.06], rd: [0.5, -0.1, 0.85], nock: 1, drop: 0.03, lean: 0.02, twist: -0.6 }],
+      [0.5, { lg: [0.07, 0.73, 0.37], ld: [0, 1, 0.06], rg: [-0.1, 0.78, 0.02], rd: [0.5, -0.1, 0.85], nock: 0, drop: 0.03, lean: 0.02, twist: -0.6, stop: 1 }],
       [0.8, { lg: [0.12, 0.55, 0.22], ld: [0, 0.96, 0.25], rg: [-0.12, 0.5, 0.14], rd: [0, -1, 0.3], nock: 0, drop: 0.02, lean: 0.02, twist: -0.2 }],
       [1.0, { lg: [0.16, 0.45, 0.12], ld: [0, 0.94, 0.33], rg: [-0.14, 0.45, 0.1], rd: [0, -1, 0.2], nock: 0, drop: 0.02, lean: 0.02, twist: 0 }],
     ], false),
   };
   const ATTACK_KIND = {
     sword: 'strike', axe: 'strike', spear: 'thrust', javelin: 'throw', pike: 'lunge', fireLance: 'lunge',
-    halberd: 'chop', greatsword: 'chop', crossbow: 'aim', gun: 'aim', bow: 'draw', longbow: 'draw', staff: 'strike',
+    halberd: 'polechop', greatsword: 'chop', crossbow: 'aim', gun: 'aim', bow: 'draw', longbow: 'draw', staff: 'strike',
   };
   // second grip along the shaft for two-handed weapons
-  const LEFT_ON_SHAFT = { lunge: 0.32, chop: 0.09, aim: 0.22 };
+  const LEFT_ON_SHAFT = { lunge: 0.26, chop: 0.09, polechop: 0.2, aim: 0.12 };
 
   /** The bowstring's middle follows the drawing hand (nock = 1) or rests (0). */
   function setNock(out, k) {
@@ -800,7 +830,9 @@ function makeHumanPose(THREE, bones, opts = {}) {
   }
 
   function weaponAttack(t) {
-    const kind = ATTACK_KIND[WEAPON] || 'strike';
+    // a shield-bearer keeps the shield up and thrusts one-handed, even with a pike
+    let kind = ATTACK_KIND[WEAPON] || 'strike';
+    if (SHIELD && kind === 'lunge') kind = 'thrust';
     const u = (t % ATTACK) / ATTACK;
     const k = ATTACKS[kind](u);
     const solved = solveBody(k, FIGHT_FEET, (o, d) => {
@@ -810,7 +842,7 @@ function makeHumanPose(THREE, bones, opts = {}) {
         return;
       }
       const D = V3(k.d).normalize();
-      gripShaft(o, 'R', V3(k.g), D, kind === 'strike' || kind === 'chop' ? new THREE.Vector3(1, 0, 0).cross(D) : null, V3(POLE_R), d);
+      gripShaft(o, 'R', V3(k.g), D, kind === 'strike' || kind === 'chop' || kind === 'polechop' ? new THREE.Vector3(1, 0, 0).cross(D) : null, V3(POLE_R), d);
       if (LEFT_ON_SHAFT[kind]) gripShaft(o, 'L', V3(k.g).addScaledVector(D, LEFT_ON_SHAFT[kind]), D, null, V3([0.7, -1, 0.1]), d);
       else if (SHIELD) holdShield(o, d, false);
       else if (k.lg) reach(o, 'L', V3(k.lg), handPoint(V3(k.ld), Z), V3(POLE_L), d);
@@ -825,8 +857,8 @@ function makeHumanPose(THREE, bones, opts = {}) {
 
   /** The priest at work (healing, converting): the staff raised, the other hand held out. */
   const PRAY = track([
-    [0.0, { g: [-0.15, 0.6, 0.2], d: [0, 0.95, 0.3], lg: [0.14, 0.72, 0.3], ld: [0, 0.4, 1], drop: 0.0, lean: -0.03 }],
-    [0.5, { g: [-0.15, 0.64, 0.22], d: [0, 0.97, 0.22], lg: [0.13, 0.76, 0.32], ld: [0, 0.5, 1], drop: 0.0, lean: -0.06 }],
+    [0.0, { g: [-0.2, 0.6, 0.22], d: [0.12, 0.94, 0.3], lg: [0.14, 0.72, 0.3], ld: [0, 0.4, 1], drop: 0.0, lean: -0.03 }],
+    [0.5, { g: [-0.2, 0.64, 0.24], d: [0.12, 0.96, 0.22], lg: [0.13, 0.76, 0.32], ld: [0, 0.5, 1], drop: 0.0, lean: -0.06 }],
   ], true);
   function prayPose(t) {
     const k = PRAY((t % 2.4) / 2.4);

@@ -163,7 +163,7 @@ export class UnitView {
     carry: string | null, relic: boolean, working: boolean, scale: number): void {
     const baked = getBakedRig(model);
     if (baked) {
-      this.baked.draw(baked, x, y, z, facing, st, color, carry, working, scale);
+      this.baked.draw(baked, x, y, z, facing, st, color, carry, working, scale, relic);
       return;
     }
     const b = this.batch(model);

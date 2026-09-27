@@ -90,7 +90,10 @@ const CORE = ['head', 'torso', 'belt', 'scarf'].filter(has);
 const LEGS = ['thighL', 'thighR', 'shinL', 'shinR', 'wrapL', 'wrapR', 'footL', 'footR'].filter(has);
 const ARM = { L: ['uparmL', 'sleeveL', 'forearmL', 'handL'], R: ['uparmR', 'sleeveR', 'forearmR', 'handR'] };
 const LOWER_ARM = { L: ['forearmL', 'handL'], R: ['forearmR', 'handR'] };
-const toolParts = (tool) => MODEL.parts.filter((p) => p.variant === 'tool:' + tool && p.name !== 'rodline').map((p) => p.name);
+const KIT = MODEL.kit || null;
+const TWO_HANDED = new Set(['pike', 'fireLance', 'halberd', 'greatsword', 'crossbow', 'gun']);
+const toolParts = (tool) => (tool === 'kit' ? KIT.held.filter((n) => byName[n])
+  : MODEL.parts.filter((p) => p.variant === 'tool:' + tool && p.name !== 'rodline').map((p) => p.name));
 const BASE = MODEL.parts.filter((p) => !p.variant).map((p) => p.name);
 
 /** Pairs (moving part -> parts it must stay out of) for a given tool. */
@@ -102,7 +105,14 @@ function pairs(tool, twoHanded) {
     P.push(['uparm' + s, [...LEGS, 'head']]);
   }
   for (const l of ['thighL', 'thighR', 'shinL', 'shinR']) P.push([l, ['head']]);   // inside the trunk they are hidden under the tunic
-  if (tool) {
+  if (tool === 'kit') {
+    const bow = KIT.weapon === 'bow' || KIT.weapon === 'longbow';
+    const holding = bow ? ['handL'] : twoHanded ? ['handL', 'handR'] : ['handR'];
+    const body = [...CORE, ...LEGS, ...ARM.L, ...ARM.R].filter((n) => !holding.includes(n));
+    for (const t of toolParts('kit')) P.push([t, body]);
+    // the shield is strapped to the left forearm
+    for (const t of KIT.shield.filter((n) => byName[n])) P.push([t, [...CORE, ...LEGS, ...ARM.R]]);
+  } else if (tool) {
     const holding = tool === 'basket' ? ['handL'] : twoHanded ? ['handL', 'handR'] : ['handR'];
     const body = [...CORE, ...LEGS, ...ARM.L, ...ARM.R].filter((n) => !holding.includes(n));
     for (const t of toolParts(tool)) P.push([t, body]);
@@ -117,7 +127,7 @@ const REST_INSIDE = {};
   const V = Object.fromEntries(MODEL.parts.map((p) => [p.name, worldVerts(p)]));
   const S = Object.fromEntries(MODEL.parts.map((p) => [p.name, solid(p, V[p.name])]));
   const all = new Set();
-  for (const tool of [null, 'axe', 'pick', 'hammer', 'hoe', 'spear', 'rod', 'basket']) for (const [a, bs] of pairs(tool, true)) for (const b of bs) all.add(a + '|' + b);
+  for (const tool of KIT ? [null, 'kit'] : [null, 'axe', 'pick', 'hammer', 'hoe', 'spear', 'rod', 'basket']) for (const [a, bs] of pairs(tool, true)) for (const b of bs) all.add(a + '|' + b);
   for (const key of all) {
     const [a, b] = key.split('|');
     REST_INSIDE[key] = new Set(V[a].map((v, i) => (inside(v, S[b]) ? i : -1)).filter((i) => i >= 0));
@@ -133,21 +143,23 @@ function hemOf(model) {
   for (let i = 0; i < sk.pos.length; i += 3) if (sk.pos[i + 1] + piv[1] < y + 0.01) r = Math.max(r, Math.hypot(sk.pos[i] + piv[0], sk.pos[i + 2] + piv[2]));
   return { y, r };
 }
-const HEM = hemOf(MODEL);
+const HEM = byName.skirt ? hemOf(MODEL) : null;
+const POSE_OPTS = require('./lowest.cjs').dieOptions(MODEL, makeHumanPose,
+  { hem: HEM || undefined, weapon: KIT ? KIT.weapon : undefined, shield: KIT ? KIT.shield.length > 0 : false });
 
 function evaluate(anim, tool, opts = {}) {
-  const poser = makeHumanPose(THREE, MODEL.bones, { hem: HEM });
+  const poser = makeHumanPose(THREE, MODEL.bones, POSE_OPTS);
   const w = poser.WORK[tool] || poser.WORK.none;
-  const T = anim === 'work' ? w.period : anim === 'attack' ? poser.ATTACK : anim === 'die' ? poser.DIE.len + 0.3
+  const T = anim === 'work' ? (KIT ? 2.4 : w.period) : anim === 'attack' ? poser.ATTACK : anim === 'die' ? poser.DIE.len + 0.3
     : anim === 'walk' ? 2 / poser.WALK.freq : 6;
-  const twoHanded = anim === 'work' ? w.left != null : anim === 'attack' && tool === 'spear';
+  const twoHanded = KIT ? anim === 'attack' && TWO_HANDED.has(KIT.weapon) : anim === 'work' ? w.left != null : anim === 'attack' && tool === 'spear';
   const PAIRS = pairs(tool, twoHanded);
-  const shown = [...BASE, ...(tool ? MODEL.parts.filter((p) => p.variant === 'tool:' + tool).map((p) => p.name) : [])];
+  const shown = [...BASE, ...(tool && tool !== 'kit' ? MODEL.parts.filter((p) => p.variant === 'tool:' + tool).map((p) => p.name) : [])];
   const r = { unreached: 0, miss: 0, bend: 0, ground: Infinity, groundPart: '', toolDepth: 0, slide: 0, pen: {}, legShow: 0, frames: FRAMES };
   const feet0 = {};
   for (let f = 0; f < FRAMES; f++) {
     const t = (f / FRAMES) * T;
-    const pose = poser.pose(anim, t, false, tool);
+    const pose = poser.pose(anim, t, false, tool === 'kit' ? null : tool);
     for (const d of pose.__diag || []) {
       if (d.miss !== undefined && d.miss > 0.002) { r.unreached++; r.miss = Math.max(r.miss, d.miss); }
       else if (d.reached === false && d.what.startsWith('leg') && anim !== 'die') r.unreached++;
@@ -204,6 +216,7 @@ function evaluate(anim, tool, opts = {}) {
     }
     if (process.env.PERFRAME && here.length) console.log(`   ${(f / FRAMES).toFixed(2)} ${here.join(' ')}`);
     // legs under the cloth: a ray cast outward must hit the skirt (only where the leg is above the hem)
+    if (!byName.skirt) continue;
     const sv = verts('skirt'), st = solid(byName.skirt, sv).t;
     const centre = new THREE.Vector3().setFromMatrixPosition(groups.hips.matrixWorld);
     const az = (v) => Math.atan2(v.x - centre.x, v.z - centre.z);
@@ -273,7 +286,13 @@ function report(anim, tool) {
   return r;
 }
 
-if (require.main === module) {
+if (require.main === module && KIT) {
+  // the priest never attacks: he heals and converts (work)
+  for (const a of KIT.weapon === 'staff' ? ['idle', 'walk', 'work', 'die'] : ['idle', 'walk', 'attack', 'die']) {
+    if (ONLY_ANIM && a !== ONLY_ANIM) continue;
+    report(a, 'kit');
+  }
+} else if (require.main === module) {
   const TOOLS = ['axe', 'pick', 'hammer', 'hoe', 'basket', 'spear', 'rod'];
   const runs = [];
   for (const t of TOOLS) runs.push(['work', t]);

@@ -11,7 +11,8 @@ const { makeHumanPose } = require('../review/human-pose.cjs');
 const { GAITS, makeHorseGait } = require('../review/horse-gait.cjs');
 const { makeRiderPose } = require('../review/rider-pose.cjs');
 
-const [inDir, outDir] = process.argv.slice(2);
+const [inDir, outDir, only] = process.argv.slice(2);
+const { dieOptions } = require('../review/lowest.cjs');
 const load = (f) => JSON.parse(fs.readFileSync(path.join(inDir, f), 'utf8'));
 fs.mkdirSync(outDir, { recursive: true });
 
@@ -235,7 +236,7 @@ function bakeVillager(file, id) {
     clips['attack:' + tool] = bakeClip(model.bones, names, (t) => P.pose('attack', t, false, tl), P.ATTACK, 30, false);
   }
   clips.die = bakeClip(model.bones, names, (t) => P.pose('die', t, false, null), P.DIE.len, 30, false);
-  const meta = { walkSpeed: P.WALK.speed, attackHit: P.ATTACK * 0.5 };
+  const meta = { kind: 'villager', walkSpeed: P.WALK.speed, attackHit: P.ATTACK * 0.5 };
   return { id, height: 0.95, bones: model.bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
     parts: mergeParts(model, villagerColor), clips, meta };
 }
@@ -266,6 +267,7 @@ function bakeScout() {
   clips['rider:attack'] = bakeClip(bones, riderBones, (t) => rp.pose('attack', t, null), rp.ATTACK_PERIOD, 30, false);
   clips.die = bakeClip(bones, names, scoutDeath(model, gait, rp, horseBones), 1.6, 30, false);
   const meta = {
+    kind: 'scout',
     gaits: Object.fromEntries(['walk', 'trot', 'canter'].map((g) => [g, { speed: GAITS[g].speed }])),
     // the thrust lands at half-way through the rider's attack
     attackHit: rp.ATTACK_PERIOD * 0.5,
@@ -331,11 +333,99 @@ function lowestPoint(model, pose, onlyBones) {
   return low;
 }
 
+// ------------------------------------------------------------------------------------------------ soldiers
+const SKINS = [0xe0b48c, 0xc89066, 0xa8704a, 0x7a4a2e, 0x5a3420];
+const SOLDIER_KIT = {
+  skin: SKINS[0], hair: 0x3a2616, beard: 0x33200f, legs: 0x6a5236, linen: 0xe2dac8, leather: 0x7a5230, darkleather: 0x3e2a1a,
+  wrap: 0x9a8466, shoe: 0x4a3020, steel: 0xb8bcc4, mail: 0x8a8e94, bronze: 0xc0923a, gold: 0xd4a93a, lacquer: 0x6a2a20,
+  fur: 0x6a6a66, feather: 0xf0f0e0, turban: 0xe8e0d0, hood: 0x5a6a3a, hat: 0x3a2a1a, wood: 0x6a4a2a, cord: 0xd8ccb0,
+  darksteel: 0x4a4a4a,
+};
+/** Per-unit colours and build, as in the game's procedural models (units.ts). */
+const SOLDIER_LOOK = {
+  skirmisher: { hair: 0x6a4a2a },
+  legionary: { legs: 0xb03020 }, eliteLegionary: { legs: 0xb03020 },
+  gaesatae: { hair: 0xc89040, legs: 0x3a6a3a, scale: 1.08 }, eliteGaesatae: { hair: 0xd8a850, legs: 0x3a6a3a, scale: 1.12 },
+  berserker: { hair: 0x8a5a2a, legs: 0x5a4a3a, scale: 1.1 }, eliteBerserker: { hair: 0x8a5a2a, legs: 0x5a4a3a, scale: 1.15 },
+  bowman: { skin: SKINS[4], legs: 0xe8e0d0 }, eliteBowman: { skin: SKINS[4], legs: 0xe8e0d0 },
+  fireLancer: { skin: SKINS[1], helm: 0x5a2a20 }, eliteFireLancer: { skin: SKINS[1], helm: 0xd4a93a },
+  monk: { skin: SKINS[1] },
+};
+
+function soldierColor(look) {
+  const pal = { ...SOLDIER_KIT, ...look };
+  return (p, i) => {
+    if (p.mat === 'team') return new THREE.Color(1, 1, 1);
+    let hex = pal[p.mat] ?? pal.leather;
+    if (look.helm && p.name === 'helmet' && (p.mat === 'steel' || p.mat === 'gold')) hex = look.helm;
+    const c = lin(hex);
+    const m = p.masks || {};
+    if (m.hair) mix(c, pal.hair, m.hair[i]);
+    if (m.beard) mix(c, pal.beard ?? pal.hair, m.beard[i]);
+    return c;
+  };
+}
+
+function bakeSoldier(id) {
+  const model = load('kit_' + id + '.json');
+  const k = model.kit;
+  const skirt = model.parts.some((p) => p.name === 'skirt');
+  const base = { hem: skirt ? hemOf(model) : undefined, weapon: k.weapon, shield: k.shield.length > 0 };
+  const P = makeHumanPose(THREE, model.bones, dieOptions(model, makeHumanPose, base));
+  const names = model.bones.map((b) => b.name);
+  const walkT = 1 / P.WALK.freq;
+  const clips = {};
+  clips.idle = bakeClip(model.bones, names, seamless((t) => P.pose('idle', t), 8), 8, 6, true);
+  clips.walk = bakeClip(model.bones, names, (t) => P.pose('walk', t), walkT, 30, true);
+  clips.die = bakeClip(model.bones, names, (t) => P.pose('die', t), P.DIE.len, 30, false);
+  if (k.weapon === 'staff') {
+    clips.work = bakeClip(model.bones, names, (t) => P.pose('work', t), 2.4, 15, true);
+    clips.carryIdle = bakeClip(model.bones, names, seamless((t) => P.pose('idle', t, true), 8), 8, 6, true);
+    clips.carryWalk = bakeClip(model.bones, names, (t) => P.pose('walk', t, true), walkT, 30, true);
+  } else {
+    clips.attack = bakeClip(model.bones, names, (t) => P.pose('attack', t), P.ATTACK, 30, false);
+  }
+  const look = SOLDIER_LOOK[id] || {};
+  const meta = { kind: 'soldier', walkSpeed: P.WALK.speed, attackHit: P.ATTACK * 0.5, scale: look.scale || 1 };
+  return { id, height: 1.0, bones: model.bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, soldierColor(look)), clips, meta };
+}
+
+// ------------------------------------------------------------------------------------------------ compact encoding
+/** Geometry as base64 typed arrays: positions int16 (1/8192 m), normals int8, colours and weights uint8, indices uint16. */
+function pack(part) {
+  const b64 = (arr) => Buffer.from(arr.buffer).toString('base64');
+  const out = { ...part };
+  out.pos = b64(Int16Array.from(part.pos, (x) => Math.round(x * 8192)));
+  out.nrm = b64(Int8Array.from(part.nrm, (x) => Math.round(x * 127)));
+  out.col = b64(Uint8Array.from(part.col, (x) => Math.max(0, Math.min(255, Math.round(x * 255)))));
+  out.idx = b64(Uint16Array.from(part.idx));
+  if (part.w) out.w = b64(Uint8Array.from(part.w, (x) => Math.round(x * 255)));
+  if (part.si) out.si = b64(Uint8Array.from(part.si));
+  out.n = part.idx.length;
+  return out;
+}
+
 // ------------------------------------------------------------------------------------------------ write
-for (const [file, data] of [['villager.json', bakeVillager('villager_m.json', 'villager')], ['villagerF.json', bakeVillager('villager_f.json', 'villagerF')], ['scout.json', bakeScout()]]) {
+const jobs = [
+  ['villager', () => bakeVillager('villager_m.json', 'villager')],
+  ['villagerF', () => bakeVillager('villager_f.json', 'villagerF')],
+  ['scout', () => bakeScout()],
+];
+for (const f of fs.readdirSync(inDir)) {
+  const m = f.match(/^kit_(\w+)\.json$/);
+  if (m) jobs.push([m[1], () => bakeSoldier(m[1])]);
+}
+fs.writeFileSync(path.join(outDir, 'index.json'), JSON.stringify(jobs.map(([id]) => id)));
+for (const [id, make] of jobs) {
+  if (only && !only.split(',').includes(id)) continue;
+  const file = id + '.json';
+  const data = make();
+  const tris = data.parts.reduce((a, p) => a + p.idx.length / 3, 0);
+  data.enc = 1;
+  data.parts = data.parts.map(pack);
   const text = JSON.stringify(data);
   fs.writeFileSync(path.join(outDir, file), text);
   const frames = Object.values(data.clips).reduce((a, c) => a + c.frames, 0);
-  const tris = data.parts.reduce((a, p) => a + p.idx.length / 3, 0);
   console.log(`${file}: ${(text.length / 1024).toFixed(0)} KB, ${data.parts.length} meshes, ${tris} triangles, ${Object.keys(data.clips).length} clips (${frames} frames)`);
 }

@@ -272,8 +272,9 @@ function snapshot(root: THREE.Object3D, bgA: string, bgB: string, closeUp: boole
 function bakedUnitIcon(rig: BakedRig, color: number): string {
   const pose = new Float32Array(rig.bones.length * BAKED_STRIDE);
   restPose(pose, rig.bones.length);
-  const villager = rig.id !== 'scout';
-  for (const name of villager ? ['idle:axe'] : ['horse:stand', 'rider:hold']) {
+  const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
+  const villager = kind !== 'scout';
+  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : ['horse:stand', 'rider:hold']) {
     const clip = rig.clips.get(name);
     if (clip) sampleClip(clip, 0, pose);
   }
@@ -290,7 +291,7 @@ function bakedUnitIcon(rig: BakedRig, color: number): string {
   const matN = new THREE.MeshLambertMaterial({ vertexColors: true });
   const matP = new THREE.MeshLambertMaterial({ vertexColors: true, color });
   for (const part of rig.parts) {
-    if (part.variant && part.variant !== 'tool:axe') continue;
+    if (part.variant && (kind !== 'villager' || part.variant !== 'tool:axe')) continue;
     if (part.variant && !villager) continue;
     const m = new THREE.Mesh(part.geo, part.pc ? matP : matN);
     m.matrixAutoUpdate = false;

@@ -317,7 +317,7 @@ HELD, SHIELD = [], []
 if KIT:
     CTX = dict(mk=mk, add=add, LAYERS=LAYERS, CR=CR, SH=SH, EL=EL, WR=WR, HIP=HIP, KNEE=KNEE, ANKLE=ANKLE,
                GRIP_R=GRIP_R, GRIP_L=GRIP_L, SEAT=SEAT, SEAT_SPEAR=SEAT_SPEAR, skirt_masks=skirt_masks,
-               held=HELD, shield_parts=SHIELD)
+               held=HELD, shield_parts=SHIELD, TORSO_RINGS=TORSO_RINGS, LIGHT=LIGHT)
     equipment.Kit(CTX, KIT).build()
     if 'nock_rest' in CTX:
         BONES.append({'name': 'nock', 'parent': 'handL', 'pivot': list(CTX['nock_rest'])})

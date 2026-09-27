@@ -217,27 +217,29 @@ class Kit:
         if a == 'none':
             return
         mat = {'leather': 'leather', 'mail': 'mail', 'plate': 'steel', 'lamellar': 'lacquer', 'bronze': 'bronze'}[a]
-        cu = self.part('cuirass', 'torso', mat, tris=320, symmetric=True, smooth=5)
-        cu.ellipsoid((0, 0.545, -0.004), (0.088, 0.062, 0.068))
-        cu.ellipsoid((0, 0.625, 0.004), (0.1, 0.075, 0.072))
-        cu.ellipsoid((0, 0.7, -0.008), (0.108, 0.036, 0.058))
-        cu.ellipsoid((0, 0.76, 0.0), (0.06, 0.03, 0.08), cut=True)                  # neck opening
-        for s in (1, -1):
-            cu.ellipsoid((0.125 * s, 0.7, -0.008), (0.03, 0.05, 0.05), cut=True)    # arm holes
+        light = self.c['LIGHT']
+        # the cuirass follows the trunk's own cross-sections, a little larger, open at the neck and the waist
+        off = 0.006
+        rings = [(y, w, f, b, z) for (y, w, f, b, z) in self.c['TORSO_RINGS'] if 0.47 <= y <= 0.74]
+        cu = self.part('cuirass', 'torso', mat, remesh=False)
+        cu.loft([((0, y, z), (1, 0, 0), (0, 0, 1), w + off, f + off, b + off) for (y, w, f, b, z) in rings],
+                seg=16 if light else 24, power=2.25, cap_start=False, cap_end=False)
         self.add(cu)
         self.layers.append(('cuirass', ['torso'], 0.004))
         if a == 'lamellar':
-            bands = self.part('bands', 'torso', 'gold', tris=160, symmetric=True)
-            for y in (0.58, 0.64):
-                bands.limb((0, y, 0), (0, y + 0.008, 0), 0.1, 0.1, seg=24, caps=False, flat=0.72)
+            bands = self.part('bands', 'torso', 'gold', remesh=False)
+            for y0 in (0.58, 0.64):
+                near = min(self.c['TORSO_RINGS'], key=lambda r: abs(r[0] - y0))
+                _, w, f, b, z = near
+                bands.loft([((0, y, z), (1, 0, 0), (0, 0, 1), w + 0.011, f + 0.011, b + 0.011) for y in (y0, y0 + 0.01)],
+                           seg=16 if light else 24, power=2.25, cap_start=False, cap_end=False)
             self.add(bands)
             self.layers.append(('bands', ['cuirass'], 0.002))
         if a in ('mail', 'lamellar'):
             # a short skirt of mail (or lacquered plates) over the tunic, skinned like it
-            ms = self.part('mailskirt', 'hips', mat, tris=260, symmetric=True, smooth=5)
-            ms.limb((0, 0.5, -0.004), (0, 0.36, -0.004), 0.094, 0.118, seg=24, caps=False)
-            ms.ellipsoid((0, 0.495, -0.004), (0.096, 0.03, 0.076))
-            ms.ellipsoid((0, 0.31, -0.004), (0.3, 0.05, 0.3), cut=True)
+            ms = self.part('mailskirt', 'hips', mat, remesh=False)
+            ms.loft([((0, y, -0.004), (1, 0, 0), (0, 0, 1), r, r * 0.8, r * 0.8) for y, r in ((0.5, 0.097), (0.46, 0.104), (0.41, 0.112), (0.36, 0.121))],
+                    seg=16 if light else 24, cap_start=False, cap_end=False)
             self.c['skirt_masks'](ms)
             self.add(ms)
             self.layers.append(('mailskirt', ['skirt'], 0.004))
@@ -257,18 +259,28 @@ class Kit:
                 pa.ellipsoid(sh + V_((-0.03 * s, -0.02, 0)), (0.04, 0.06, 0.06), cut=True)
                 self.add(pa)
                 self.layers.append(('pauldron' + side, ['sleeve' + side], 0.003))
-                vb = self.part('vambrace' + side, 'elbow' + side, 'steel', tris=110)
-                vb.limb(el.lerp(wr, 0.35), el.lerp(wr, 0.9), 0.031, 0.025, seg=12, caps=False)
+                vb = self.part('vambrace' + side, 'elbow' + side, 'steel', remesh=False)
+                self.tube(vb, el, wr, [(0.35, 0.034), (0.62, 0.031), (0.9, 0.027)])
                 self.add(vb)
                 self.layers.append(('vambrace' + side, ['forearm' + side], 0.003))
         if a in ('plate', 'bronze'):
             for s, side in ((1, 'L'), (-1, 'R')):
                 knee, ankle = self.c['KNEE'][s], self.c['ANKLE'][s]
-                gr = self.part('greave' + side, 'knee' + side, 'steel' if a == 'plate' else 'bronze', tris=120)
-                gr.limb(knee.lerp(ankle, 0.08), knee.lerp(ankle, 0.8), 0.034, 0.027, seg=12, caps=False)
-                gr.ellipsoid(knee.lerp(ankle, 0.3) + V_((0, 0, -0.012)), (0.032, 0.05, 0.032))
+                gr = self.part('greave' + side, 'knee' + side, 'steel' if a == 'plate' else 'bronze', remesh=False)
+                self.tube(gr, knee, ankle, [(0.06, 0.037), (0.3, 0.038), (0.55, 0.034), (0.8, 0.029)])
                 self.add(gr)
                 self.layers.append(('greave' + side, ['shin' + side, 'wrap' + side], 0.003))
+
+    def tube(self, part, a, b, profile):
+        """An open sleeve of armour lofted along a limb (profile: [(t, radius)] from a to b)."""
+        axis = (b - a)
+        L = axis.length
+        axis.normalize()
+        f = V((0, 0, 1)) - axis * axis.z
+        f.normalize()
+        u = axis.cross(f)
+        part.loft([(a + axis * (L * t), u, f, r, r, r) for t, r in profile], seg=10 if self.c['LIGHT'] else 16,
+                  cap_start=False, cap_end=False)
 
     def sash(self):
         s = self.part('sash', 'torso', 'team', tris=160, smooth=4)
@@ -423,7 +435,7 @@ class Kit:
             self.c['held'] += ['stock', 'prod']
         elif w == 'gun':
             stock = P('stock', 'wood', 140)
-            stock.limb(g + V_((0, 0.05, 0)), g + V_((0, -0.18, 0)), 0.02, 0.022, seg=8)
+            stock.limb(g + V_((0, 0.05, 0)), g + V_((0, -0.1, 0)), 0.02, 0.022, seg=8)
             self.add(stock, None, seat_spear)
             barrel = P('barrel', 'darksteel', 140)
             barrel.limb(g + V_((0, 0.03, 0)), g + V_((0, 0.4, 0)), 0.02, 0.016, seg=10)
