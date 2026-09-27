@@ -51,9 +51,10 @@ H = V((0.0, 0.9, -0.04))          # hips (pelvis centre, on the saddle)
 T = V((0.0, 0.93, -0.045))        # torso pivot (small of the back)
 HEAD = V((0.0, 1.2, -0.05))       # neck base
 SH = {1: V((0.108, 1.162, -0.045)), -1: V((-0.108, 1.162, -0.045))}   # shoulders
-EL = {1: V((0.132, 1.03, -0.005)), -1: V((-0.15, 1.035, -0.03))}      # elbows
-WR = {1: V((0.074, 0.978, 0.098)), -1: V((-0.158, 0.99, 0.07))}       # wrists
-FIST = {1: V((0.064, 0.97, 0.122)), -1: V((-0.198, 0.984, 0.092))}
+EL = {1: V((0.132, 1.03, -0.005)), -1: V((-0.16, 1.03, -0.02))}       # elbows
+WR = {1: V((0.074, 0.978, 0.098)), -1: V((-0.19, 0.99, 0.085))}       # wrists
+FIST = {1: V((0.064, 0.97, 0.122)), -1: V((-0.205, 0.978, 0.117))}
+GRIP = FIST[-1]                   # where the right fist closes on the spear
 
 horse_bones = {b['name']: b for b in horse['bones']}
 BONES = [
@@ -480,8 +481,11 @@ head = mk.Part('head', 'rhead', 'skin', voxel=0.0017, smooth=4, tris=620)
 head.limb(HEAD + V((0, -0.025, -0.01)), CR + V((0, -0.045, -0.004)), 0.036, 0.032, seg=14)      # neck, leaning forward
 head.ellipsoid(CR, (0.05, 0.054, 0.056))                                                        # skull
 head.ellipsoid(CR + V((0, -0.034, 0.018)), (0.042, 0.036, 0.044))                               # upper jaw / face
-head.ellipsoid(CR + V((0, -0.048, 0.008)), (0.041, 0.024, 0.042))                               # lower jaw
-head.ellipsoid(CR + V((0, -0.063, 0.04)), (0.017, 0.013, 0.012))                                # chin
+head.ellipsoid(CR + V((0, -0.05, 0.01)), (0.04, 0.026, 0.043))                                 # lower jaw
+for s_ in (1, -1):
+    head.ellipsoid(CR + V((0.032 * s_, -0.048, -0.004)), (0.012, 0.02, 0.022))                  # angle of the jaw
+head.ellipsoid(CR + V((0, -0.068, 0.044)), (0.02, 0.016, 0.016))                                # chin
+head.ball(CR + V((0, -0.066, 0.054)), 0.011)                                                    # point of the chin
 head.ellipsoid(CR + V((0, 0.003, 0.049)), (0.04, 0.009, 0.01))                                  # brow ridge
 for s_ in (1, -1):
     head.ellipsoid(CR + V((0.029 * s_, -0.014, 0.043)), (0.016, 0.011, 0.012))                 # cheekbones
@@ -543,29 +547,44 @@ for s, side in ((1, 'L'), (-1, 'R')):
         parts.append(piece.build())
 
 # ------------------------------------------------------------------------------------------------ spear (right hand)
-SPEAR_DIR = V((0.0, 1.0, 0.1)).normalized()
-butt = FIST[-1] - SPEAR_DIR * 0.1   # gripped near the butt, so the shaft never reaches back into the arm
-tip = FIST[-1] + SPEAR_DIR * 0.93
-shaft = mk.Part('spearshaft', 'rhandR', 'wood', voxel=0.002, smooth=2, tris=90)
+SPEAR_DIR = V((0.03, 1.0, -0.12)).normalized()   # upright, butt a little forward of the grip, clear of the knee
+SPEAR_REAR, SPEAR_FRONT = 0.38, 0.95
+BONES.append({'name': 'rspear', 'parent': 'rtorso', 'pivot': list(GRIP)})
+butt = GRIP - SPEAR_DIR * SPEAR_REAR
+tip = GRIP + SPEAR_DIR * SPEAR_FRONT
+shaft = mk.Part('spearshaft', 'rspear', 'wood', voxel=0.002, smooth=2, tris=90)
 shaft.limb(butt, tip - SPEAR_DIR * 0.1, 0.0095, 0.0085, seg=8)
 parts.append(shaft.build())
-iron = mk.Part('spearhead', 'rhandR', 'iron', voxel=0.0016, smooth=2, tris=110)
+iron = mk.Part('spearhead', 'rspear', 'iron', voxel=0.0016, smooth=2, tris=110)
 head_base = tip - SPEAR_DIR * 0.12
 iron.limb(head_base - SPEAR_DIR * 0.02, head_base + SPEAR_DIR * 0.01, 0.011, 0.011, seg=8)     # socket
 iron.ellipsoid(head_base + SPEAR_DIR * 0.055, (0.022, 0.058, 0.005), rot=(-math.atan2(SPEAR_DIR.z, SPEAR_DIR.y), 0, 0))  # leaf blade
 iron.cone(head_base + SPEAR_DIR * 0.09, tip, 0.012, seg=6)
 iron.cone(butt + SPEAR_DIR * 0.03, butt - SPEAR_DIR * 0.03, 0.01, seg=6)                      # butt spike
 parts.append(iron.build())
-binding = mk.Part('spearbinding', 'rhandR', 'leather', voxel=0.0016, smooth=2, tris=40)
+binding = mk.Part('spearbinding', 'rspear', 'leather', voxel=0.0016, smooth=2, tris=40)
 binding.limb(head_base - SPEAR_DIR * 0.045, head_base - SPEAR_DIR * 0.02, 0.012, 0.012, seg=8)
 parts.append(binding.build())
+
+# ------------------------------------------------------------------------------------------------ layers
+# Each garment is pushed out from what it covers, and what it covers is pulled back in, so nothing shows through.
+by_name = {o.name: o for o in parts}
+LAYER_GAP = 1.6 if LIGHT else 1.0   # the light version's larger faces need more room
+LAYERS = [
+    ('cuirass', ['torso'], 0.004), ('sleeveL', ['uparmL'], 0.003), ('sleeveR', ['uparmR'], 0.003),
+    ('bracerL', ['forearmL'], 0.003), ('bracerR', ['forearmR'], 0.003), ('boots', ['legs'], 0.003),
+    ('skirt', ['legs'], 0.005), ('belt', ['skirt'], 0.002), ('buckle', ['belt'], 0.0015),
+    ('hair', ['head'], 0.002), ('cap', ['head', 'hair'], 0.003),
+]
+for outer, inners, gap in LAYERS:
+    out_n, in_n = mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
+    print(f'LAYER {outer:<9} over {"+".join(inners):<10} moved {out_n:4d} out, {in_n:4d} underneath in')
 
 # ------------------------------------------------------------------------------------------------ clearance
 # Straps laid across hollows dip in at their edges, and the fitted shapes can graze the horse where the surface
 # curves: push anything inside (or closer than a small gap) back out along the surface normal.
 TACK_GAP = {'cloth': 0.005, 'clothtrim': 0.006, 'saddle': 0.006, 'saddlebronze': 0.004, 'straps': 0.003,
             'pendant': 0.002, 'bridle': 0.0025, 'bits': 0.002, 'reins': 0.004}
-by_name = {o.name: o for o in parts}
 for name, gap in TACK_GAP.items():
     inside, deep = CLEAR.push_out(by_name[name], gap)
     after = CLEAR.report(by_name[name])
@@ -582,9 +601,10 @@ def under_cloth(p):
 for name in ('legs', 'boots', 'skirt'):
     obj = by_name[name]
     if name == 'skirt':
-        # the tunic hangs over the trousers
+        # the tunic hangs over the trousers and must clear the saddle horns
         SEAT = mk.Surface(horse_obj, hair_obj, by_name['saddle'], by_name['legs'])
-    near = 0.006 if name == 'skirt' else 0.003
+        near = 0.008
+    near = 0.003 if name != 'skirt' else 0.008
     for _ in range(2):   # a second pass catches points pushed from one surface into another
         a_ = SEAT.push_out(obj, 0.014, only=under_cloth)
         b_ = SEAT.push_out(obj, near, only=lambda p: not under_cloth(p))
@@ -596,6 +616,17 @@ for name in ('legs', 'boots', 'skirt'):
             if n is not None and d < 0:
                 dh = CLEAR.signed_distance(q)[0]
                 print(f'   still inside {name}: ({q[0]:+.3f},{q[1]:.3f},{q[2]:+.3f}) depth {-d*1000:.1f}mm normal ({n.x:+.2f},{n.y:+.2f},{n.z:+.2f}) horse-dist {dh*1000:.1f}mm')
+
+# legs were moved off the horse after layering: lay the boots and tunic over them again
+for outer, inners, gap in LAYERS:
+    if outer in ('boots', 'skirt'):
+        mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
+# finally the tunic rests on the saddle: keep it out of the saddle (and the horse), then report what still overlaps
+SADDLE_ONLY = mk.Surface(horse_obj, by_name['saddle'])
+for _ in range(2):
+    SADDLE_ONLY.push_out(by_name['skirt'], 0.004)
+print('SKIRT inside saddle/horse:', SADDLE_ONLY.report(by_name['skirt'])[0],
+      '| legs poking through skirt:', mk.Surface(by_name['skirt']).report(by_name['legs'])[0] if False else 'n/a')
 
 # ------------------------------------------------------------------------------------------------ bake and export
 horse_occluder = mk.object_from_export(horse_path, part_names=['body'], name='horse_occluder')[0]
@@ -626,5 +657,7 @@ if preview_path:
                               ('face34', 40.0, 12.0, (0, 1.27, -0.03), 0.2),
                               ('seat', 70.0, 22.0, (0.05, 0.84, -0.03), 0.36), ('seatback', 150.0, 25.0, (0.02, 0.84, -0.06), 0.36),
                               ('chest', 25.0, 8.0, (0.05, 0.68, 0.42), 0.36), ('belly', 80.0, 3.0, (0.05, 0.55, 0.1), 0.45),
-                              ('bridle2', 75.0, 12.0, (0, 0.96, 0.66), 0.3), ('crupper', 120.0, 30.0, (0, 0.78, -0.36), 0.36)))
+                              ('bridle2', 75.0, 12.0, (0, 0.96, 0.66), 0.3), ('crupper', 120.0, 30.0, (0, 0.78, -0.36), 0.36),
+                              ('back', 200.0, 25.0, (0, 1.1, -0.05), 0.34), ('thighL', 60.0, 30.0, (0.1, 0.88, 0.05), 0.26),
+                              ('chestF', 15.0, 15.0, (0, 1.1, -0.02), 0.3), ('thighR', -60.0, 30.0, (-0.1, 0.88, 0.05), 0.26)))
     print('PREVIEW', paths)

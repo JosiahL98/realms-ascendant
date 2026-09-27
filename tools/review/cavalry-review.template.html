@@ -107,7 +107,7 @@
 
 <div class="wrap">
   <header>
-    <span class="status">Awaiting your approval · version 2</span>
+    <span class="status">Awaiting your approval · version 3</span>
     <h1>The Cavalryman</h1>
     <p class="lede">A new rider and saddle for the scout, built in Blender like the horse and fitted to it. He sits on the approved light horse, next to the scout your stables train today. Nothing has been put into the game yet.</p>
   </header>
@@ -207,11 +207,11 @@
   <section class="notes">
     <h2>Latest changes</h2>
     <ul>
-      <li>A new face: the nose now grows from between the eyes with a proper bridge and tip, and the brow, cheekbones and chin were rebuilt around the skull.</li>
-      <li>A shorter neck. The head sits lower on the shoulders and leans slightly forward, and the collar rises to meet it.</li>
-      <li>The spear no longer passes through his arm. His fist grips the shaft to the outside of the forearm, the shaft behind the grip is shorter, and a levelled spear angles slightly across the horse's neck, as riders held it. I measured at least 12 mm of clearance between spear and arm through the whole thrust.</li>
-      <li>No more tack sinking into the horse. Every strap is laid densely along the horse's surface and pushed out of it (and out of the mane and tail) wherever it dipped in. The rider's legs and tunic are kept clear of the saddle and horse the same way.</li>
-      <li>The saddle's front horns moved forward so they sit in front of his thighs instead of inside them, and the pommel is narrower so it fits between his legs.</li>
+      <li>Clothing no longer blends into the body. Each garment is pushed out from what it covers, and the layer underneath is pulled back in, so the tunic can't show through the cuirass, bare arm through the sleeves, or trousers and saddle horns through the tunic.</li>
+      <li>A proper chin and jawline.</li>
+      <li>He holds the spear about a third of the way up the shaft, upright at rest.</li>
+      <li>A new overarm attack. He lifts the spear, sloping it back over his shoulder, brings the point over the top, draws back and stabs forward and down, to the right of the horse's head. His arm follows the spear by IK.</li>
+      <li>I measured the spear against every other part (his arms, body, legs, the saddle, tack and horse) at 90 moments through the attack, in both the full and light versions. Nothing is closer than 9 mm, and the horse is at least 5 cm away. The route the spear takes over his shoulder was found by a search that maximises that clearance.</li>
     </ul>
   </section>
 
@@ -230,7 +230,7 @@
     <ul>
       <li>Rider and tack add <span class="light-tris-inline">–</span> triangles to the light horse's 2,493, so a light cavalryman is about <span id="unit-ratio">5</span> times today's scout. I'll measure the frame rate in a big battle before committing, and trim the light version if needed.</li>
       <li>This is the scout's kit. Once you're happy with it, the other cavalry (knights, horse archers, camel riders and so on) would reuse this body with their own armour, helmets, shields and weapons.</li>
-      <li>The attack is an underarm spear thrust with a twist of the body. In the game it plays each time the scout strikes.</li>
+      <li>The attack is an overarm stab with a twist of the body. In the game it plays each time the scout strikes; between strikes in a fight he could stay in the raised stance instead of lowering the spear every time.</li>
     </ul>
   </section>
 
@@ -247,6 +247,7 @@
 <script type="application/json" id="rider-light">%%RIDER_LIGHT%%</script>
 <script>
 %%GAIT%%
+%%RIDERPOSE%%
 </script>
 
 <script type="module">
@@ -259,6 +260,7 @@ const RIDER = { full: json('rider-full'), light: json('rider-light') };
 const HORSE_BONES = new Set(['root', 'body', 'neck', 'legFL', 'legFR', 'legBL', 'legBR', 'tail']);
 const SCOUT_COAT = 0x8a5a32;
 const gait = makeHorseGait(HORSE.full.bones);
+const riderPoser = makeRiderPose(THREE, RIDER.full.bones);
 
 const COATS = [
   { id: 'bay', name: 'Bay', coat: 0x8a5a32, points: 0x1c1612, hair: 0x19130f, oldHex: 0x8a5a32 },
@@ -532,36 +534,12 @@ function colorize() {
 const clamp01 = (x) => Math.min(1, Math.max(0, x));
 const ease = (x) => { const t = clamp01(x); return t * t * (3 - 2 * t); };
 const lerp = (a, b, t) => a + (b - a) * t;
-const ATTACK_PERIOD = 1.5;
+const ATTACK_PERIOD = RIDER_ATTACK_PERIOD;
 
 function horsePose(name, t) { return name === 'stand' ? gait.stand(t) : gait.pose(GAITS[name], t); }
 
-/** The new rider: sways a little with the horse, looks about at rest, and thrusts the spear underarm. */
-function riderPose(t) {
-  const g = GAITS[state.gait];
-  const out = {};
-  const sway = g ? Math.sin(2 * Math.PI * t * g.freq * (state.gait === 'canter' ? 1 : 2)) : 0;
-  out.rtorso = { rx: g ? 0.02 * sway : 0, ry: 0 };
-  out.rhead = { rx: g ? -0.015 * sway : 0, ry: g ? 0 : 0.3 * Math.sin(t * 0.45) };
-  out.relbowL = { rx: g ? 0.04 * sway : 0 };
-  if (state.act !== 'attack') return out;
-  const u = (t % ATTACK_PERIOD) / ATTACK_PERIOD;
-  const wind = ease(u / 0.35) * (1 - ease((u - 0.42) / 0.12));
-  const thrust = ease((u - 0.36) / 0.1) * (1 - ease((u - 0.6) / 0.3));
-  const level = ease(u / 0.3) * (1 - ease((u - 0.72) / 0.22));
-  const arm = lerp(0, 0.45, wind) - 0.75 * thrust;
-  const elbow = lerp(0, -1.0, wind) + 0.8 * thrust * wind - 0.25 * thrust;
-  out.rarmR = { rx: arm, rz: -0.2 * wind };
-  out.relbowR = { rx: elbow };
-  // keep the spear level and pointing forward, tip slightly down, while it is lowered; angled a little across the
-  // horse's neck, so the shaft behind the fist swings outward, clear of the forearm
-  out.rhandR = { rx: level * (1.66 - arm - elbow), rz: -0.3 * level };
-  // wind: right shoulder back (negative twist); thrust: right shoulder forward; the head keeps facing the target
-  const twist = -0.35 * wind + 0.3 * thrust;
-  out.rtorso = { rx: out.rtorso.rx - 0.1 * thrust, ry: twist };
-  out.rhead = { rx: out.rhead.rx, ry: -0.85 * twist };
-  return out;
-}
+/** The new rider: the spear is its own bone moved through key poses and the right arm reaches it by IK. */
+function riderPose(t) { return riderPoser.pose(state.act, t, GAITS[state.gait] || null); }
 
 /** Today's scout, as the game animates it: arms swing from the shoulder, the spear thrusts with the arm. */
 function oldPose(t) {
@@ -593,8 +571,10 @@ function oldPose(t) {
 function applyPose(rig, pose) {
   for (const [name, grp] of Object.entries(rig.groups)) {
     const p = pose[name];
-    grp.rotation.set(p ? p.rx || 0 : 0, p ? p.ry || 0 : 0, p ? p.rz || 0 : 0);
+    if (p && p.q) grp.quaternion.fromArray(p.q);
+    else grp.rotation.set(p ? p.rx || 0 : 0, p ? p.ry || 0 : 0, p ? p.rz || 0 : 0);
     grp.position.copy(grp.userData.rest);
+    if (p && p.p) { grp.position.x += p.p[0]; grp.position.y += p.p[1]; grp.position.z += p.p[2]; }
     if (p && p.py) grp.position.y += p.py;
     if (p && p.pz) grp.position.z += p.pz;
   }

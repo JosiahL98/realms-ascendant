@@ -13,6 +13,9 @@ t = read(os.path.join(here, 'cavalry-review.template.html'))
 gait = read(os.path.join(here, 'horse-gait.cjs')).replace("if (typeof module !== 'undefined') module.exports = { GAITS, makeHorseGait };", '')
 for key, path in (('%%OLD%%', old), ('%%HORSE%%', horse), ('%%HORSE_LIGHT%%', horse_light), ('%%RIDER%%', rider), ('%%RIDER_LIGHT%%', rider_light)):
     t = t.replace(key, read(path))
-t = t.replace('%%GAIT%%', gait)
+rpose = read(os.path.join(here, 'rider-pose.cjs')).replace(
+    "if (typeof module !== 'undefined') module.exports = { makeRiderPose, ATTACK_PERIOD };",
+    'const RIDER_ATTACK_PERIOD = ATTACK_PERIOD;')
+t = t.replace('%%GAIT%%', gait).replace('%%RIDERPOSE%%', rpose)
 open(out, 'w', encoding='utf8').write(t)
 print(f'{out}: {len(t)} bytes')

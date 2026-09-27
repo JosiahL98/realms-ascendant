@@ -476,3 +476,29 @@ class Surface:
     def nearest(self, p):
         loc, nrm, _, dist = self.tree.find_nearest(g2b(p))
         return Vector(b2g(loc)), Vector(b2g(nrm)), dist
+
+
+def separate(outer, inners, gap, poke=0.01):
+    """
+    Layers clothing over what it covers: vertices of `outer` closer than `gap` to (or inside) the union of `inners`
+    move out along the surface normal; then vertices of each inner that poke through `outer`, or sit less than
+    `gap` under it, move back in. Returns (outer vertices moved, inner vertices moved).
+    """
+    under = Surface(*inners)
+    moved_out = 0
+    for v in outer.data.vertices:
+        d, n = under.signed_distance(b2g(v.co))
+        if n is not None and d < gap:
+            v.co = v.co + g2b(n) * (gap - d)
+            moved_out += 1
+    outer.data.update()
+    over = Surface(outer)
+    moved_in = 0
+    for inner in inners:
+        for v in inner.data.vertices:
+            d, n = over.signed_distance(b2g(v.co))
+            if n is not None and -gap < d < poke:
+                v.co = v.co - g2b(n) * (d + gap)
+                moved_in += 1
+        inner.data.update()
+    return moved_out, moved_in
