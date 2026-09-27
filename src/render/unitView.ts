@@ -6,6 +6,8 @@ import { lerpAngle } from '../util/math';
 import { getRig, type Rig } from './models/units';
 import { animate, activeVariant, BONE_STRIDE, type AnimState } from './anim';
 import { makeWorldMaterial } from './materials';
+import { getBakedRig } from './models/baked';
+import { BakedUnits } from './bakedView';
 
 interface Batch {
   rig: Rig;
@@ -42,11 +44,14 @@ export class UnitView {
   private matFade: THREE.MeshLambertMaterial;
   /** Screen-space info for picking, filled each frame. */
   drawn: Unit[] = [];
+  /** Units modelled in Blender with baked animation (villagers, scout). */
+  private baked: BakedUnits;
 
   constructor() {
     for (let i = 0; i < 40; i++) this.world.push(new THREE.Matrix4());
     this.mat = makeWorldMaterial({ fog: 'none', detail: true });
     this.matFade = this.mat;
+    this.baked = new BakedUnits(this.group);
   }
 
   private batch(model: string): Batch {
@@ -92,6 +97,7 @@ export class UnitView {
 
   update(game: Game, alpha: number, localTeam: number, inView: (x: number, z: number) => boolean, colorOf: (owner: number) => number): void {
     for (const b of this.batches.values()) b.count = 0;
+    this.baked.begin();
     this.drawn.length = 0;
     const time = game.time;
     const vis = game.vision.visible.get(localTeam);
@@ -142,6 +148,7 @@ export class UnitView {
       }, colorOf(c.owner), null, false, false, age > 9 ? Math.max(0.01, 1 - (age - 9) / 5) : 1);
     }
     this.corpses = keep;
+    this.baked.end();
     for (const b of this.batches.values()) {
       for (const m of b.meshes) {
         m.count = b.count;
@@ -154,6 +161,11 @@ export class UnitView {
 
   private drawOne(model: string, x: number, y: number, z: number, facing: number, st: AnimState, color: number,
     carry: string | null, relic: boolean, working: boolean, scale: number): void {
+    const baked = getBakedRig(model);
+    if (baked) {
+      this.baked.draw(baked, x, y, z, facing, st, color, carry, working, scale);
+      return;
+    }
     const b = this.batch(model);
     if (b.count >= b.capacity) this.grow(b, b.capacity * 2);
     const idx = b.count++;

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { ArchStyle } from '../data/types';
 import { getRig } from '../render/models/units';
+import { BAKED_STRIDE, getBakedRig, restPose, sampleClip, type BakedRig } from '../render/models/baked';
 import { buildingModel } from '../render/models/buildings';
 import { animate, activeVariant, BONE_STRIDE } from '../render/anim';
 import { worldUniforms } from '../render/materials';
@@ -267,10 +268,50 @@ function snapshot(root: THREE.Object3D, bgA: string, bgB: string, closeUp: boole
   return c2.toDataURL('image/png');
 }
 
+/** Portrait of a baked unit (villager, scout) in its standing pose. */
+function bakedUnitIcon(rig: BakedRig, color: number): string {
+  const pose = new Float32Array(rig.bones.length * BAKED_STRIDE);
+  restPose(pose, rig.bones.length);
+  const villager = rig.id !== 'scout';
+  for (const name of villager ? ['idle:axe'] : ['horse:stand', 'rider:hold']) {
+    const clip = rig.clips.get(name);
+    if (clip) sampleClip(clip, 0, pose);
+  }
+  const world: THREE.Matrix4[] = [];
+  const q = new THREE.Quaternion(), p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+  rig.bones.forEach((b, i) => {
+    const o = i * BAKED_STRIDE;
+    const pp = b.parent >= 0 ? rig.bones[b.parent].pivot : [0, 0, 0];
+    q.set(pose[o], pose[o + 1], pose[o + 2], pose[o + 3]);
+    const local = new THREE.Matrix4().compose(p.set(b.pivot[0] - pp[0] + pose[o + 4], b.pivot[1] - pp[1] + pose[o + 5], b.pivot[2] - pp[2] + pose[o + 6]), q, one);
+    world.push(b.parent < 0 ? local : new THREE.Matrix4().multiplyMatrices(world[b.parent], local));
+  });
+  const root = new THREE.Group();
+  const matN = new THREE.MeshLambertMaterial({ vertexColors: true });
+  const matP = new THREE.MeshLambertMaterial({ vertexColors: true, color });
+  for (const part of rig.parts) {
+    if (part.variant && part.variant !== 'tool:axe') continue;
+    if (part.variant && !villager) continue;
+    const m = new THREE.Mesh(part.geo, part.pc ? matP : matN);
+    m.matrixAutoUpdate = false;
+    m.matrix.copy(world[part.bone]);
+    root.add(m);
+  }
+  root.rotation.y = -0.5;
+  if (!villager) root.scale.setScalar(0.86);   // the new horse is a little larger than the old one
+  return snapshot(root, '#6a5a44', '#2a2218', villager);
+}
+
 export function unitIcon(model: string, color: number): string {
   const key = model + '|' + color;
   const c = modelIconCache.get(key);
   if (c) return c;
+  const baked = getBakedRig(model);
+  if (baked) {
+    const uri = bakedUnitIcon(baked, color);
+    modelIconCache.set(key, uri);
+    return uri;
+  }
   const rig = getRig(model);
   const pose = new Float32Array(rig.bones.length * BONE_STRIDE);
   animate(rig, { anim: 'idle', t: 0, time: 0, speed: 1, moving: false, attackDelay: 0.4, reload: 2, tool: model.startsWith('villager') ? 'axe' : null, seed: 0, packed: false }, pose);

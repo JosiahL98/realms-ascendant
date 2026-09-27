@@ -10,6 +10,7 @@ import { PropView } from './propView';
 import { GroundDetailView } from './groundView';
 import { Effects } from './effects';
 import { getRig } from './models/units';
+import { bakedHeight } from './models/baked';
 import { buildingModel } from './models/buildings';
 import type { TextureAssets } from './assets';
 import { PostFX, installGrading, loadQuality, saveQuality, type GraphicsQuality } from './post';
@@ -267,10 +268,10 @@ export class Renderer {
     };
     for (const u of this.units.drawn) {
       if (!u.alive) continue;
-      const rig = getRig(u.def.model);
+      const height = bakedHeight(u.def.model) ?? getRig(u.def.model).height;
       const r = Math.max(0.28, u.radius * 1.2);
       const y = g.map.surfaceAt(u.x, u.z);
-      test(u, u.x - r, y, u.z - r, u.x + r, y + rig.height * 0.95, u.z + r);
+      test(u, u.x - r, y, u.z - r, u.x + r, y + height * 0.95, u.z + r);
     }
     const bit = 1 << (this.localTeam & 15);
     for (const b of g.buildings) {
@@ -303,8 +304,8 @@ export class Renderer {
     const ax = Math.min(x0, x1), bx = Math.max(x0, x1), ay = Math.min(y0, y1), by = Math.max(y0, y1);
     for (const u of this.units.drawn) {
       if (!u.alive) continue;
-      const rig = getRig(u.def.model);
-      const p = this.project(u.x, this.game.map.surfaceAt(u.x, u.z) + rig.height * 0.4, u.z);
+      const height = bakedHeight(u.def.model) ?? getRig(u.def.model).height;
+      const p = this.project(u.x, this.game.map.surfaceAt(u.x, u.z) + height * 0.4, u.z);
       if (p.x >= ax && p.x <= bx && p.y >= ay && p.y <= by) out.push(u);
     }
     return out;

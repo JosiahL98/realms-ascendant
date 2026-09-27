@@ -6,6 +6,7 @@ import { AudioSys } from './audio/audio';
 import { AIPlayer } from './ai/ai';
 import { issueCommand } from './sim/commands';
 import { loadTextureAssets } from './render/assets';
+import { loadBakedRigs } from './render/models/baked';
 
 const app = document.getElementById('app')!;
 const audio = new AudioSys();
@@ -17,7 +18,8 @@ function startGame(setup: GameSetup): void {
   menus.showLoading('Preparing the realm…');
   // let the loading screen paint before the heavy lifting
   setTimeout(async () => {
-    const assets = await loadTextureAssets();
+    // ?oldunits=1 keeps the procedural unit models (for comparing)
+    const [assets] = await Promise.all([loadTextureAssets(), new URLSearchParams(location.search).get('oldunits') ? Promise.resolve() : loadBakedRigs()]);
     app.innerHTML = '';
     session = new Session(app, setup, (game, pid) => new AIPlayer(game, pid, setup.players[pid - 1].difficulty), backToMenu, audio, assets);
     applyDebug(session);

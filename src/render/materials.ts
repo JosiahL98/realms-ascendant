@@ -32,6 +32,67 @@ export interface WorldMatOpts {
   leaves?: boolean;
   /** Grass tufts: tops bend in the wind, roots stay put. */
   grass?: boolean;
+  /**
+   * Skinned unit parts (baked Blender units): 'lbs' blends in up to two more bones given per instance as a rotation
+   * and offset relative to the part's own bone (skirts, the fishing line); 'bend' turns vertices about the horse's
+   * neck and upper-leg joints by weight x angle (per-instance angles and foreleg lifts; joint pivots in bendPivots).
+   */
+  skin?: 'lbs' | 'bend';
+  bendPivots?: number[];
+}
+
+/** Vertex shader pieces for skinned unit parts: declarations, normal change, position change. */
+export function skinShader(skin: 'lbs' | 'bend'): { decl: string; normal: string; vertex: string } {
+  if (skin === 'lbs') {
+    return {
+      decl: `
+        attribute vec2 skinW;
+        attribute vec4 iSkinQ0; attribute vec3 iSkinT0; attribute vec4 iSkinQ1; attribute vec3 iSkinT1;
+        vec3 skinQRot(vec4 q, vec3 v) { return v + 2.0 * cross(q.xyz, cross(q.xyz, v) + q.w * v); }
+      `,
+      normal: `objectNormal = normalize((1.0 - skinW.x - skinW.y) * objectNormal + skinW.x * skinQRot(iSkinQ0, objectNormal) + skinW.y * skinQRot(iSkinQ1, objectNormal));`,
+      vertex: `transformed = (1.0 - skinW.x - skinW.y) * transformed + skinW.x * (skinQRot(iSkinQ0, transformed) + iSkinT0) + skinW.y * (skinQRot(iSkinQ1, transformed) + iSkinT1);`,
+    };
+  }
+  return {
+    decl: `
+      attribute float skinW; attribute float skinIdx;
+      attribute vec4 iBendA; attribute vec4 iBendB;
+      uniform vec3 uBendPivot[5];
+      float bendAngle(int i) { return i == 0 ? iBendA.x : i == 1 ? iBendA.y : i == 2 ? iBendA.z : i == 3 ? iBendA.w : iBendB.x; }
+      float bendLift(int i) { return i == 1 ? iBendB.y : i == 2 ? iBendB.z : 0.0; }
+      mat3 bendRot(float a) { float c = cos(a), s = sin(a); return mat3(1.0, 0.0, 0.0, 0.0, c, s, 0.0, -s, c); }
+    `,
+    normal: `objectNormal = bendRot(bendAngle(int(skinIdx + 0.5)) * skinW) * objectNormal;`,
+    vertex: `{
+        int bi = int(skinIdx + 0.5);
+        vec3 bp = uBendPivot[bi];
+        transformed = bp + bendRot(bendAngle(bi) * skinW) * (transformed - bp) + vec3(0.0, bendLift(bi) * skinW, 0.0);
+      }`,
+  };
+}
+
+const bendPivotUniform = (flat: number[] | undefined) => ({
+  value: Array.from({ length: 5 }, (_, i) => new THREE.Vector3(flat?.[i * 3] ?? 0, flat?.[i * 3 + 1] ?? 0, flat?.[i * 3 + 2] ?? 0)),
+});
+
+const depthCache = new Map<string, THREE.MeshDepthMaterial>();
+/** Shadow-casting material that deforms skinned parts the same way as their lit material. */
+export function makeSkinDepthMaterial(skin: 'lbs' | 'bend', bendPivots?: number[]): THREE.MeshDepthMaterial {
+  const key = skin + JSON.stringify(bendPivots ?? []);
+  const cached = depthCache.get(key);
+  if (cached) return cached;
+  const m = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  const code = skinShader(skin);
+  m.onBeforeCompile = (shader) => {
+    if (skin === 'bend') shader.uniforms.uBendPivot = bendPivotUniform(bendPivots);
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', `#include <common>\n${code.decl}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${code.vertex}`);
+  };
+  m.customProgramCacheKey = () => 'skindepth:' + key;
+  depthCache.set(key, m);
+  return m;
 }
 
 const materialCache = new Map<string, THREE.MeshLambertMaterial>();
@@ -62,6 +123,7 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
     shader.uniforms.uTime = worldUniforms.uTime;
     shader.uniforms.uDetailTex = worldUniforms.uDetailTex;
     shader.uniforms.uDetailGain = worldUniforms.uDetailGain;
+    if (opts.skin === 'bend') shader.uniforms.uBendPivot = bendPivotUniform(opts.bendPivots);
     let vDecl = `
       uniform float uMapSize;
       uniform float uTime;
@@ -121,9 +183,17 @@ export function makeWorldMaterial(opts: WorldMatOpts = {}): THREE.MeshLambertMat
         }
       `;
     }
+    let skinNormal = '', skinVertex = '';
+    if (opts.skin) {
+      const code = skinShader(opts.skin);
+      vDecl += code.decl;
+      skinNormal = code.normal;
+      skinVertex = code.vertex;
+    }
     shader.vertexShader = shader.vertexShader
       .replace('#include <common>', `#include <common>\n${vDecl}`)
-      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${swayCode}`)
+      .replace('#include <beginnormal_vertex>', `#include <beginnormal_vertex>\n${skinNormal}`)
+      .replace('#include <begin_vertex>', `#include <begin_vertex>\n${skinVertex}\n${swayCode}`)
       .replace('#include <project_vertex>', `#include <project_vertex>\n${vBody}`);
 
     let fDecl = `

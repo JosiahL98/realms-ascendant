@@ -3,6 +3,7 @@ import type { Building, Entity, Unit } from '../sim/entities';
 import { issueCommand, type Command, type CmdResult } from '../sim/commands';
 import { Renderer } from '../render/renderer';
 import { getRig } from '../render/models/units';
+import { bakedHeight } from '../render/models/baked';
 import { buildingModel } from '../render/models/buildings';
 import { TECHS } from '../data/techs';
 import { UNITS } from '../data/units';
@@ -493,8 +494,8 @@ export class Session {
       if (e.kind === 'unit') {
         const x = e.px + (e.x - e.px) * this.alpha, z = e.pz + (e.z - e.pz) * this.alpha;
         if (!r.inView(x, z, 1)) continue;
-        const rig = getRig(e.def.model);
-        const p = r.project(x, g.map.surfaceAt(x, z) + rig.height + 0.12, z);
+        const height = bakedHeight(e.def.model) ?? getRig(e.def.model).height;
+        const p = r.project(x, g.map.surfaceAt(x, z) + height + 0.12, z);
         const col = e.owner === this.local ? '#3ae02a' : g.isEnemy(this.local, e.owner) ? '#e8401a' : '#e8e0a0';
         drawBar(p.x, p.y, e.hp / e.stats.hp, 32, col);
         if (e.def.monk && e.faith < 100) drawBar(p.x, p.y + 6 * scale, e.faith / 100, 32, '#5ab0ff');
