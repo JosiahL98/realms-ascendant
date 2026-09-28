@@ -71,7 +71,7 @@ export function snapshotGame(g: Game, ai: [number, Plain][], view: Plain): SaveD
     game: {
       time: g.time, tickCount: g.tickCount, nextId: g.nextId, market: g.market, winnerTeam: g.winnerTeam, over: g.over,
       relicTeam: g.relicTeam, relicTimer: g.relicTimer, carcassOf: g.carcassOf, buildingsVersion: g.buildingsVersion,
-      resourcesVersion: g.resourcesVersion, acc: priv.acc, rng: (g.rng as unknown as { s: number }).s,
+      resourcesVersion: g.resourcesVersion, acc: priv.acc, rng: (g.rng as unknown as { s: number }).s, unreachable: g.unreachable,
     },
     map: {
       terrain: g.map.terrain, heights: g.map.heights, obstacle: g.map.obstacle, gateOwner: g.map.gateOwner, farmAt: g.map.farmAt,
@@ -107,6 +107,7 @@ export function restoreGame(d: SaveData): Game {
   g.buildingsVersion = gs.buildingsVersion as number;
   g.resourcesVersion = gs.resourcesVersion as number;
   priv.acc = gs.acc ?? 0;
+  g.unreachable = (gs.unreachable as Map<number, number> | undefined) ?? new Map();
   (g.rng as unknown as { s: number }).s = gs.rng as number;
 
   // terrain and what stands on it; passability and water bodies follow from them

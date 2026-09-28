@@ -34,6 +34,8 @@ export class Pathfinder {
   /** Statistics */
   searches = 0;
   expanded = 0;
+  /** Tiles the last search explored (a search that gives up at maxNodes has explored all it may). */
+  lastExpanded = 0;
 
   constructor(map: GameMap, teamOf: Int8Array) {
     this.map = map;
@@ -146,6 +148,7 @@ export class Pathfinder {
     const m = this.map;
     const n = m.n;
     this.searches++;
+    this.lastExpanded = 0;
     const gx = (goal.x0 + goal.x1) / 2, gz = (goal.z0 + goal.z1) / 2;
     const isPoint = goal.x1 - goal.x0 < 1e-6 && goal.z1 - goal.z0 < 1e-6 && goal.range < 0.01;
 
@@ -227,6 +230,7 @@ export class Pathfinder {
       }
     }
     this.expanded += expanded;
+    this.lastExpanded = expanded;
     const endIdx = found >= 0 ? found : best;
     const reached = found >= 0;
     // Reconstruct

@@ -117,7 +117,10 @@ function steer(game: Game, u: Unit, dx: number, dz: number): [number, number] {
     if (Math.abs(lat) >= rr * 0.98) return;
     let side = lat > 0 ? -1 : 1;   // it is on the left: bear right, and the other way round
     if (v.moving) {
-      const same = Math.sin(v.facing) * dx + Math.cos(v.facing) * dz;
+      // which way it is actually going (its facing turns at a limited rate, so it can lag behind)
+      const mx = v.x - v.px, mz = v.z - v.pz;
+      const ml = Math.hypot(mx, mz);
+      const same = ml > 1e-5 ? (mx * dx + mz * dz) / ml : Math.sin(v.facing) * dx + Math.cos(v.facing) * dz;
       if (same > 0.5) return;       // walking the same way: follow
       if (same < -0.5) side = -1;   // coming the other way: keep right
     } else if (Math.abs(lat) < 0.08) {
@@ -353,13 +356,23 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
       u.navGoalZ = gz;
       u.navGoalR = range;
       u.navReachable = true;
+    } else if (rect && game.isUnreachable(orderTarget(u), team)) {
+      // this side already searched every way to it and found none (a tree deep in a wood, say)
+      u.navFailed = 2;
+      u.path = [];
+      return 'failed';
     } else if (game.time >= u.repathAt && game.takePathBudget()) {
       const goal = rect
         ? { x0: rect.x0, z0: rect.z0, x1: rect.x1, z1: rect.z1, range: Math.max(0, range) }
         : { x0: gx, z0: gz, x1: gx, z1: gz, range: Math.max(0, range - 0.5) };
+      // a way round a crowd is a local detour: a short search, keeping the best part-way path if it is cut off
+      const maxNodes = aroundCrowd ? 3000 : 30000;
       if (aroundCrowd) pf.setCrowd(standingNear(game, u, 10));
-      const res = pf.findPath(u.x, u.z, goal, team);
+      const res = pf.findPath(u.x, u.z, goal, team, maxNodes);
       if (aroundCrowd) pf.clearCrowd();
+      game.spendPathNodes(pf.lastExpanded);
+      // a full search that found no way to a fixed target (resource, building): remember it for a while
+      if (!res.reached && !aroundCrowd && rect && pf.lastExpanded >= maxNodes) game.markUnreachable(orderTarget(u), team);
       const dbg = (globalThis as unknown as { __pathStats?: Map<string, number> }).__pathStats;
       if (dbg) {
         const tgt = 'target' in u.order ? game.get((u.order as { target: number }).target) : undefined;
@@ -1112,7 +1125,7 @@ function findNextResource(game: Game, u: Unit, kind: GatherKind, x: number, z: n
     return best;
   }
   const body = u.def.naval ? game.map.bodyAt(u.x, u.z) : 0;
-  const r = game.findResource(kind, x, z, kind === 'fish' ? (u.def.naval ? 40 : 6) : kind === 'wood' ? 12 : 9, exclude, body);
+  const r = game.findResource(kind, x, z, kind === 'fish' ? (u.def.naval ? 40 : 6) : kind === 'wood' ? 12 : 9, exclude, body, game.teamOf[u.owner]);
   if (r) return r;
   if (kind === 'herd') {
     let best: Unit | null = null;

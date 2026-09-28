@@ -89,6 +89,10 @@ export class Game {
   spatial: SpatialHash;
   pathfinder: Pathfinder;
   pathBudget = 0;
+  /** Tiles path searches may still explore this tick (a cap on the tick's pathfinding cost). */
+  pathNodes = 0;
+  /** Fixed targets (resources, buildings) a team's search found no way to: key id * 16 + team -> until when. */
+  unreachable = new Map<number, number>();
   events: GameEvent[] = [];
   vision: Vision;
   /** Global market prices (gold per 100 units). */
@@ -440,7 +444,8 @@ export class Game {
   }
 
   /** Find the nearest resource of a gather kind around a point, preferring less crowded ones. */
-  findResource(kind: GatherKind, x: number, z: number, maxR: number, excludeId = 0, waterBody = 0): ResourceNode | null {
+  /** `team` (if given): leave out resources that team has found no way to (see markUnreachable). */
+  findResource(kind: GatherKind, x: number, z: number, maxR: number, excludeId = 0, waterBody = 0, team = -1): ResourceNode | null {
     let best: ResourceNode | null = null;
     let bs = Infinity;
     const m = this.map;
@@ -458,6 +463,7 @@ export class Game {
             const e = this.entities.get(id);
             if (!e || e.kind !== 'resource' || e.gather !== kind || e.amount <= 0) continue;
             if (!m.hasOpenNeighbor(tx, tz)) continue;
+            if (team >= 0 && this.isUnreachable(id, team)) continue;
             const d = Math.hypot(e.x - x, e.z - z) + this.crowd(e) * (kind === 'forage' ? 2.5 : 1.2);
             if (d < bs) {
               bs = d;
@@ -494,9 +500,29 @@ export class Game {
   }
 
   takePathBudget(): boolean {
-    if (this.pathBudget <= 0) return false;
+    if (this.pathBudget <= 0 || this.pathNodes <= 0) return false;
     this.pathBudget--;
     return true;
+  }
+
+  spendPathNodes(n: number): void {
+    this.pathNodes -= n;
+  }
+
+  /** How long a target stays marked as out of reach (s): things change (a wood is cut, a wall comes down). */
+  static readonly UNREACHABLE_FOR = 60;
+
+  markUnreachable(id: number, team: number): void {
+    if (id) this.unreachable.set(id * 16 + (team & 15), this.time + Game.UNREACHABLE_FOR);
+  }
+
+  isUnreachable(id: number, team: number): boolean {
+    if (!id) return false;
+    const until = this.unreachable.get(id * 16 + (team & 15));
+    if (until === undefined) return false;
+    if (until > this.time) return true;
+    this.unreachable.delete(id * 16 + (team & 15));
+    return false;
   }
 
   /* ------------------------------------------------------------------ */
@@ -524,6 +550,7 @@ export class Game {
     this.time += dt;
     this.tickCount++;
     this.pathBudget = 24;
+    this.pathNodes = 40000;
 
     for (const u of this.units) {
       u.px = u.x;
