@@ -274,7 +274,7 @@ function bakedUnitIcon(rig: BakedRig, color: number): string {
   restPose(pose, rig.bones.length);
   const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
   const villager = kind !== 'scout';
-  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : kind === 'animal' ? ['stand'] : ['horse:stand', 'rider:hold']) {
+  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : kind === 'animal' ? ['stand'] : kind === 'siege' ? ['idle'] : ['horse:stand', 'rider:hold']) {
     const clip = rig.clips.get(name);
     if (clip) sampleClip(clip, 0, pose);
   }
@@ -291,8 +291,9 @@ function bakedUnitIcon(rig: BakedRig, color: number): string {
   const matN = new THREE.MeshLambertMaterial({ vertexColors: true });
   const matP = new THREE.MeshLambertMaterial({ vertexColors: true, color });
   for (const part of rig.parts) {
-    if (part.variant && (kind !== 'villager' || part.variant !== 'tool:axe')) continue;
-    if (part.variant && !villager) continue;
+    // a villager is shown with an axe, a trebuchet standing
+    if (part.variant && part.variant !== 'unpacked' && (kind !== 'villager' || part.variant !== 'tool:axe')) continue;
+    if (part.variant && part.variant !== 'unpacked' && !villager) continue;
     const m = new THREE.Mesh(part.geo, part.pc ? matP : matN);
     m.matrixAutoUpdate = false;
     m.matrix.copy(world[part.bone]);

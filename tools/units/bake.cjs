@@ -11,6 +11,7 @@ const { makeHumanPose } = require('../review/human-pose.cjs');
 const { GAITS, makeHorseGait } = require('../review/horse-gait.cjs');
 const { makeRiderPose } = require('../review/rider-pose.cjs');
 const { makeAnimalPose } = require('../review/animal-pose.cjs');
+const SIEGE = require('../review/siege-pose.cjs');
 
 const [inDir, outDir, only] = process.argv.slice(2);
 const { dieOptions } = require('../review/lowest.cjs');
@@ -41,6 +42,7 @@ const COATS = {
   black: { coat: 0x2a2320, points: 0x1c1816, hair: 0x141110 },
   grey: { coat: 0xc4c0b8, points: 0x6a6660, hair: 0xd4d0c8, dapple: 0x9a968e },
   chestnut: { coat: 0xa0582a, points: 0x8a4a22, hair: 0x7a3e1c, white: 0xece6da },
+  mule: { coat: 0x5e4c3c, points: 0x2e241c, hair: 0x241c16 },
   camel: { coat: 0xc09a62, points: 0x9a7446, hair: 0x8a6a40, belly: 0xd8bc8e, hoof: 0x3a3026 },
   elephant: { coat: 0x86817c, points: 0x625e5a, hair: 0x4a4644, hoof: 0xd8d0c0, inner: 0x9a7a74, horn: 0xf0e8d6 },
 };
@@ -447,6 +449,68 @@ function animalDeath(model, P) {
   return (t) => at(t, lift);
 }
 
+// ------------------------------------------------------------------------------------------------ siege engines
+const SIEGE_KIT = {
+  wood: 0x7a5230, darkwood: 0x4a3020, plank: 0x9a7a4a, hide: 0x9a7a54, iron: 0x6a6e74, darkiron: 0x2e2e30,
+  rope: 0xc0a878, stone: 0x9a968e, bronze: 0xb88a3a, sack: 0x9a7a52, clay: 0xa8583a, darkleather: 0x3e2a1a,
+};
+const siegeColor = (p) => (p.mat === 'team' ? new THREE.Color(1, 1, 1) : lin(SIEGE_KIT[p.mat] ?? SIEGE_KIT.wood));
+const eul = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, e.ry || 0, e.rz || 0)).toArray(), p: [e.px || 0, e.py || 0, e.pz || 0] });
+const eulPose = (raw) => Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, eul(v)]));
+
+function bakeSiege(file, id) {
+  const model = load(file);
+  const { kind, height, wheel } = model.meta;
+  const names = model.bones.map((b) => b.name);
+  const clips = {};
+  clips.idle = bakeClip(model.bones, names, () => ({}), 1, 2, true);
+  // one full turn of the wheels; the renderer times it by the distance travelled
+  clips.move = bakeClip(model.bones, ['wheelF', 'wheelB'], (t) => eulPose(SIEGE.roll(t)), 1, 24, true);
+  const A = SIEGE.ATTACKS[kind];
+  clips.attack = bakeClip(model.bones, names.filter((n) => !['root', 'body', 'wheelF', 'wheelB'].includes(n)), (t) => eulPose(SIEGE.attack(kind, t)), A.len, 30, false);
+  clips.die = bakeClip(model.bones, ['root'], (t) => eulPose(SIEGE.die(t)), 1, 30, false);
+  const meta = { kind: 'siege', moveDist: 2 * Math.PI * wheel, attackHit: A.len * A.hit };
+  return { id, height, bones: model.bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, siegeColor), clips, meta };
+}
+
+/** The trade cart: the horse in harness (its own gaits) and the cart behind, whose wheels turn with the distance. */
+function bakeCart(file, id) {
+  const horse = load('horse_light.json');
+  const cart = load(file);
+  const bones = [...horse.bones];
+  for (const b of cart.bones) if (!bones.some((o) => o.name === b.name)) bones.push(b);
+  const model = { bones, parts: [...horse.parts, ...cart.parts] };
+  const names = bones.map((b) => b.name);
+  const horseBones = horse.bones.map((b) => b.name);
+  const gait = makeHorseGait(horse.bones);
+  const wheelR = cart.meta.wheel;
+  const clips = {};
+  clips['horse:stand'] = bakeClip(bones, horseBones, (t) => eulPose(gait.stand(t)), 4 * Math.PI, 8, true);
+  for (const g of ['walk', 'trot']) {
+    const G = GAITS[g];
+    // the wheels turn as far as the horse walks in one stride
+    const turns = (t) => (G.speed * t) / (2 * Math.PI * wheelR);
+    clips['horse:' + g] = bakeClip(bones, [...horseBones, 'wheelF'], (t) => eulPose({ ...gait.pose(G, t), ...SIEGE.roll(turns(t)) }), 1 / G.freq, 30, true);
+  }
+  // the horse's legs give way and it goes down in the shafts; the cart tips forward
+  clips.die = bakeClip(bones, names, (t) => {
+    const e = Math.min(1, t / 1.0) ** 2;
+    const raw = gait.stand(0);
+    raw.body = { py: -0.3 * e };
+    for (const k of ['FL', 'FR', 'BL', 'BR']) {
+      raw['leg' + k] = { rx: (k[0] === 'F' ? -0.5 : 0.6) * e };
+      raw['leg' + k + '2'] = { rx: (k[0] === 'F' ? 1.6 : -1.4) * e };
+    }
+    raw.neck = { rx: 0.5 * e };
+    raw.cart = { rx: 0.18 * e, py: -0.05 * e };
+    return eulPose(raw);
+  }, 1.2, 30, false);
+  const meta = { kind: 'scout', gaits: { walk: { speed: GAITS.walk.speed }, trot: { speed: GAITS.trot.speed } }, bend: BEND, scale: 0.8 };
+  return { id, height: 1.4, bones: bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, (p, i) => (horse.parts.includes(p) ? riderColor(COATS.mule)(p, i) : siegeColor(p))), clips, meta };
+}
+
 // ------------------------------------------------------------------------------------------------ soldiers
 const SKINS = [0xe0b48c, 0xc89066, 0xa8704a, 0x7a4a2e, 0x5a3420];
 const SOLDIER_KIT = {
@@ -532,6 +596,8 @@ for (const f of fs.readdirSync(inDir)) {
   if (c) jobs.push([c[1], () => bakeRider(f, c[1])]);
   const a = f.match(/^animal_(\w+)\.json$/);
   if (a) jobs.push([a[1], () => bakeAnimal(f, a[1])]);
+  const g = f.match(/^siege_(\w+)\.json$/);
+  if (g) jobs.push([g[1], () => (g[1] === 'tradeCart' ? bakeCart(f, g[1]) : bakeSiege(f, g[1]))]);
 }
 fs.writeFileSync(path.join(outDir, 'index.json'), JSON.stringify(jobs.map(([id]) => id)));
 for (const [id, make] of jobs) {

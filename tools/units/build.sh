@@ -32,6 +32,12 @@ wait
 # animals (tools/blender/quadruped.py)
 for a in sheep deer boar wolf; do run tools/blender/quadruped.py -- $a "$OUT/animal_$a.json" --tris 0.38 & done
 wait
+# siege engines and the trade cart (tools/blender/siege.py; the cart's collar is fitted to the full-detail horse)
+for u in ram cappedRam siegeRam mangonel onager siegeOnager scorpion heavyScorpion bombard trebuchet; do
+  run tools/blender/siege.py -- $u "$OUT/siege_$u.json" &
+done
+run tools/blender/siege.py -- tradeCart "$OUT/siege_tradeCart.json" horse="$OUT/horse.json" &
+wait
 # foot soldiers, archers and the priest: the villager's body with each unit's kit (tools/blender/equipment.py)
 for u in $(kits KITS); do
   run tools/blender/human.py -- male "$OUT/kit_$u.json" kit=$u --tris 0.38 &

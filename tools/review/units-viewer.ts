@@ -1,6 +1,6 @@
 // A viewer for the baked unit models, drawn by the game's own renderer (BakedUnits). Served by Vite:
 //   npm run dev, then /tools/review/units-viewer.html?units=knight,paladin&anim=attack
-// Query: units (ids, default all), anim (idle | walk | trot | canter | attack | die | work), cols, dist.
+// Query: units (ids, default all), anim (idle | walk | trot | canter | attack | die | work), cols, dist, packed=1.
 // window.__shot({ anim, t, azim, elev, dist, target }) renders one frame and returns a PNG data URL (for scripts).
 import * as THREE from 'three';
 import { BakedUnits } from '../../src/render/bakedView';
@@ -59,7 +59,7 @@ function state(rig: BakedRig, a: string, t: number): AnimState {
     if (!gaits && a !== 'walk') speed *= 1;
   }
   const name = (a === 'trot' || a === 'canter' ? 'walk' : a) as AnimState['anim'];
-  return { anim: name, t, time: t, speed, moving, attackDelay: rig.meta.attackHit ?? 0.5, reload: 2, tool: null, seed: 0, packed: false };
+  return { anim: name, t, time: t, speed, moving, attackDelay: rig.meta.attackHit ?? 0.5, reload: 2, tool: null, seed: 0, packed: q.get('packed') === '1' };
 }
 
 function draw(t: number): void {

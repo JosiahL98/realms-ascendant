@@ -232,7 +232,9 @@ class Part:
 
     def build(self):
         """Union, carve, smooth and decimate; returns a Blender object in absolute model space."""
-        if not self.remesh:
+        if not self.remesh and not getattr(self, 'keep_winding', False):
+            # (parts made of many separate closed pieces, e.g. boards, are built wound outward and keep it: the
+            # recalculation can turn some of them inside out)
             bmesh.ops.recalc_face_normals(self.bm, faces=self.bm.faces)
         me = bpy.data.meshes.new(self.name + '_src')
         self.bm.to_mesh(me)

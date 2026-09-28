@@ -152,6 +152,8 @@ export class BakedUnits {
       if (part.variant.startsWith('tool:')) show = !carry && st.tool === part.variant.slice(5);
       else if (part.variant.startsWith('carry:')) show = !working && carry === part.variant.slice(6);
       else if (part.variant === 'relic') show = relic;
+      else if (part.variant === 'packed') show = st.packed;      // the trebuchet on its cart
+      else if (part.variant === 'unpacked') show = !st.packed;   // or standing
       if (!show) continue;
       const idx = b.counts[k]++;
       mesh.setMatrixAt(idx, this.world[part.bone]);
@@ -206,6 +208,7 @@ function pickClips(rig: BakedRig, st: AnimState, carry: string | null, relic: bo
   const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
   if (kind === 'scout') return scoutClips(rig, st);
   if (kind === 'animal') return animalClips(rig, st);
+  if (kind === 'siege') return siegeClips(rig, st);
   if (kind === 'soldier') return soldierClips(rig, st, relic);
   return villagerClips(rig, st, carry);
 }
@@ -256,6 +259,23 @@ function villagerClips(rig: BakedRig, st: AnimState, carry: string | null): Laye
   if (carry) push(walking ? 'carryWalk' : 'carryIdle', walking ? walkT : idleT);
   else if (tool) push((walking ? 'walk:' : 'idle:') + tool, walking ? walkT : idleT);
   else push(walking ? 'walk' : 'idle', walking ? walkT : idleT);
+  return out;
+}
+
+/** Siege engines: wheels turning with the distance travelled, the engine's attack, its collapse. */
+function siegeClips(rig: BakedRig, st: AnimState): Layer[] {
+  const out: Layer[] = [];
+  const push = (name: string, t: number) => {
+    const c = clip(rig, name);
+    if (c) out.push([c, t]);
+  };
+  if (st.anim === 'die') {
+    push('die', st.t);
+    return out;
+  }
+  if (st.moving) push('move', st.time * st.speed / (rig.meta.moveDist ?? 1) + st.seed);
+  // the shot leaves (or the ram strikes) when the game resolves the attack
+  if (st.anim === 'attack') push('attack', st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay)));
   return out;
 }
 
