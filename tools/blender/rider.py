@@ -1,6 +1,9 @@
 """
 Cavalry rider (scout kit) and horse tack, fitted to the Blender horse. Run:
-  blender --background --factory-startup --python tools/blender/rider.py -- <horse.json> <out.json> [preview.png] [--tris 0.38]
+  blender --background --factory-startup --python tools/blender/rider.py -- <horse.json> <out.json> [preview.png] [kit=<unit>] [--tris 0.38]
+
+kit=<unit> (equipment.RIDER_KITS, default scout) dresses the rider and the horse: helmet, armour, weapon (spear,
+sword or bow), shield, cape, quiver, and the horse's barding.
 
 <horse.json> is the full-detail horse export (from horse.py); the tack is draped over its surface by ray casting and
 the rider's legs are pushed clear of its barrel. Coordinates are the horse's own frame (it faces +z, hooves at y = 0).
@@ -13,12 +16,14 @@ bend with its neck.
 Materials (the renderer colours them): skin, hair, eye, team (player colour: tunic, sleeves, saddle cloth), leather,
 darkleather, trousers, wood, iron, bronze, trim.
 """
+import json
 import math
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import modelkit as mk  # noqa: E402
+import equipment  # noqa: E402
 from mathutils import Vector  # noqa: E402
 
 args = sys.argv[sys.argv.index('--') + 1:] if '--' in sys.argv else []
@@ -26,6 +31,11 @@ flags = {}
 while len(args) >= 2 and args[-2].startswith('--'):
     flags[args[-2][2:]] = float(args[-1])
     args = args[:-2]
+KIT_NAME = next((a[4:] for a in args if a.startswith('kit=')), 'scout')
+args = [a for a in args if not a.startswith('kit=')]
+KIT = equipment.rider_kit(KIT_NAME)
+WEAPON = KIT['weapon']          # spear | sword | bow
+BARDING = KIT['barding']        # none | cloth | mail | plate | gold
 horse_path, out_path = args[0], args[1]
 preview_path = args[2] if len(args) > 2 else None
 mk.TRI_SCALE = flags.get('tris', 1.0)
@@ -66,14 +76,26 @@ def elbow_ik(sh, wr, pole):
 
 
 SEAT_Y = S.cast((0, 2.0, -0.04), (0, -1, 0))[0].y + 0.03    # top of the saddle seat (see saddle below)
-# right hand: holds the spear upright at his side; the fist sits just ahead of the wrist
-GRIP = V((-0.235, 0.985, 0.13))                 # where the right fist closes on the spear
-WR = {-1: GRIP - V((-0.01, 0.01, 0.035))}
-# left hand: rests on the saddle's left front horn, palm down, clear of his lap
-PALM = V((0.045, SEAT_Y + 0.062, 0.14))
-WR[1] = PALM + V((0.022, 0.016, -0.04))
-EL = {-1: elbow_ik(SH[-1], WR[-1], (-0.6, -1, -0.35)), 1: elbow_ik(SH[1], WR[1], (1, -0.12, -0.25))}   # right pole = HOLD_POLE in rider-pose.cjs
-FIST = {-1: GRIP, 1: PALM}
+# a relaxed hand rests on a front horn of the saddle, palm down, clear of his lap
+PALM = {s: V((0.045 * s, SEAT_Y + 0.062, 0.14)) for s in (1, -1)}
+POLE = {-1: (-0.6, -1, -0.35), 1: (1, -0.12, -0.25)}    # elbow poles (rider-pose.cjs reads them from the export)
+if WEAPON == 'bow':
+    # the bow lies across the pommel in the left fist, its upper limb out to the left; the right hand rests on the
+    # right horn
+    GRIP = None
+    BOW_GRIP = V((0.08, SEAT_Y + 0.12, 0.17))
+    FIST = {1: BOW_GRIP, -1: PALM[-1]}
+    WR = {1: BOW_GRIP + V((0.004, -0.012, -0.045)), -1: PALM[-1] + V((-0.022, 0.016, -0.04))}
+    POLE[-1] = (-1, -0.12, -0.25)
+    POLE[1] = (1, -0.3, -0.35)
+    CLOSED = {1: True, -1: False}      # which hands close round something
+else:
+    # right hand: holds the spear (or sword) upright at his side; the fist sits just ahead of the wrist
+    GRIP = V((-0.235, 0.985, 0.13))
+    FIST = {-1: GRIP, 1: PALM[1]}
+    WR = {-1: GRIP - V((-0.01, 0.01, 0.035)), 1: PALM[1] + V((0.022, 0.016, -0.04))}
+    CLOSED = {1: False, -1: True}
+EL = {s: elbow_ik(SH[s], WR[s], POLE[s]) for s in (1, -1)}   # right pole = HOLD_POLE in rider-pose.cjs
 
 horse_bones = {b['name']: b for b in horse['bones']}
 BONES = [
@@ -221,6 +243,37 @@ def ring(center, axis, up, radius, a0, a1, n, offset):
     return pts, nrms
 
 
+# ------------------------------------------------------------------------------------------------ caparison
+# Barding over the horse's body: a housing of cloth (or mail) from the withers to the croup, hanging to just above
+# where the legs start to bend the skin (so the legs swing clear of it). Its front follows the neck like the skin
+# under it.
+cap_z0, cap_z1 = -0.44, 0.24
+
+
+def cap_hem(z):
+    t = (z - cap_z0) / (cap_z1 - cap_z0)
+    corner = max(ss(0.12, 0.0, t), ss(0.88, 1.0, t))
+    return 0.575 + 0.1 * corner * corner
+
+
+CAPARISON = BARDING != 'none'
+if CAPARISON:
+    mail = BARDING in ('mail', 'plate')
+    rows = n_samples(24)
+    # mail lies just under the saddle; cloth passes through the saddle's underside like the saddle cloth
+    cgrid, cnrm = draped(cap_z0, cap_z1, rows, cap_hem, 0.01 if mail else 0.007, n_top=n_samples(6), n_side=n_samples(10))
+    cap = mk.Part('caparison', 'body', 'mail' if mail else 'team', remesh=False)
+    cap.mesh(*surface_grid(cgrid, cnrm, 0.0 if mail else 0.006))
+    cap.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(cap.build())
+    ctrim = mk.Part('captrim', 'body', 'gold' if BARDING == 'gold' else 'trim' if not mail else 'darkleather', remesh=False)
+    for c in (0, len(cgrid[0]) - 1):
+        ctrim.ribbon([cgrid[r][c] + V((0, 0.012, 0)) for r in range(rows)], [cnrm[r][c] for r in range(rows)], 0.02, 0.009)
+    for r in (0, rows - 1):
+        ctrim.ribbon([cgrid[r][c] for c in range(len(cgrid[0]))], cnrm[r], 0.018, 0.009)
+    ctrim.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(ctrim.build())
+
 # ------------------------------------------------------------------------------------------------ saddle cloth
 cloth_z0, cloth_z1 = -0.2, 0.11
 
@@ -232,21 +285,23 @@ def cloth_hem(z):
     return 0.6 + 0.09 * corner * corner
 
 
-rows = n_samples(11)
-grid, nrm = draped(cloth_z0, cloth_z1, rows, cloth_hem, 0.007, n_top=n_samples(4), n_side=n_samples(8))
-cloth = mk.Part('cloth', 'body', 'team', remesh=False)
-cloth.mesh(*surface_grid(grid, nrm, 0.006))
-parts.append(cloth.build())
+SADDLE_CLOTH = BARDING in ('none', 'mail', 'plate')   # a cloth caparison is its own saddle cloth
+if SADDLE_CLOTH:
+    rows = n_samples(11)
+    grid, nrm = draped(cloth_z0, cloth_z1, rows, cloth_hem, 0.007 if not CAPARISON else 0.015, n_top=n_samples(4), n_side=n_samples(8))
+    cloth = mk.Part('cloth', 'body', 'team', remesh=False)
+    cloth.mesh(*surface_grid(grid, nrm, 0.006))
+    parts.append(cloth.build())
 
-# trim border along the hem and the front and back edges
-trim = mk.Part('clothtrim', 'body', 'trim', remesh=False)
-for c in (0, len(grid[0]) - 1):
-    pts = [grid[r][c] + V((0, 0.012, 0)) for r in range(rows)]
-    nn = [nrm[r][c] for r in range(rows)]
-    trim.ribbon(pts, nn, 0.018, 0.009)
-for r in (0, rows - 1):
-    trim.ribbon([grid[r][c] for c in range(len(grid[0]))], nrm[r], 0.016, 0.009)
-parts.append(trim.build())
+    # trim border along the hem and the front and back edges
+    trim = mk.Part('clothtrim', 'body', 'trim', remesh=False)
+    for c in (0, len(grid[0]) - 1):
+        pts = [grid[r][c] + V((0, 0.012, 0)) for r in range(rows)]
+        nn = [nrm[r][c] for r in range(rows)]
+        trim.ribbon(pts, nn, 0.018, 0.009)
+    for r in (0, rows - 1):
+        trim.ribbon([grid[r][c] for c in range(len(grid[0]))], nrm[r], 0.016, 0.009)
+    parts.append(trim.build())
 
 # ------------------------------------------------------------------------------------------------ saddle (four horns)
 saddle = mk.Part('saddle', 'body', 'leather', voxel=0.0028, smooth=4, tris=520, symmetric=True)
@@ -383,7 +438,8 @@ for i in range(20):
     z = -0.19 - 0.27 * i / 19
     h, _ = S.cast((0, 2.0, z), (0, -1, 0))
     cp.append(h)
-straps.ribbon(*settle(cp, 0.003), 0.018, 0.005, top_only=LIGHT)
+if not CAPARISON:   # under a caparison it would not show
+    straps.ribbon(*settle(cp, 0.003), 0.018, 0.005, top_only=LIGHT)
 parts.append(straps.build())
 
 pendant = mk.Part('pendant', 'body', 'bronze', voxel=0.0022, smooth=2, tris=80)
@@ -423,6 +479,40 @@ for s in (1, -1):
     bits.tube(ring_pts, 0.0035, seg=4)
 bits.mask('neck', lambda p, n: neck_weight(p))
 parts.append(bits.build())
+
+# ------------------------------------------------------------------------------------------------ plate barding
+# a chamfron down the front of the face and a peytral round the chest, over the bridle and breast collar
+if BARDING in ('plate', 'gold'):
+    metal = 'gold' if BARDING == 'gold' else 'steel'
+    cham = mk.Part('chamfron', 'body', metal, remesh=False)
+    cg, cn = [], []
+    nr = n_samples(8)
+    for i in range(nr):
+        t = 0.3 + 0.62 * i / (nr - 1)
+        c = V((0, 0.985, 0.585)).lerp(V((0, 0.905, 0.745)), t)
+        half = 62 - 22 * t          # narrower towards the nose
+        pts, nn = ring(c, HEAD_AXIS, (0, 0.789, 0.614), 0.4, -half, half, n_samples(7), 0.011)
+        cg.append(pts)
+        cn.append(nn)
+    cham.mesh(*surface_grid(cg, cn, 0.0))
+    cham.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(cham.build())
+    pey = mk.Part('peytral', 'body', metal, remesh=False)
+    pg, pn = [], []
+    for i in range(n_samples(10)):
+        y = 0.6 + 0.17 * i / (n_samples(10) - 1)
+        row, rn = [], []
+        for j in range(n_samples(23)):
+            a_ = math.radians(-78 + 156 * j / (n_samples(23) - 1))
+            d = V((math.sin(a_), 0, math.cos(a_)))
+            h, nn = S.cast(V((0, y, 0.18)) + d * 0.6, -d, 1.2)
+            row.append(h + nn * 0.02)
+            rn.append(nn)
+        pg.append(row)
+        pn.append(rn)
+    pey.mesh(*surface_grid(pg, pn, 0.0))
+    pey.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(pey.build())
 
 
 
@@ -469,30 +559,76 @@ for s in (1, -1):
     skirt.limb(hip + V((0, 0.012, -0.004)), hip.lerp(knee, 0.34) + V((0, 0.018, -0.006)), 0.058, 0.049, seg=14)  # over the thigh
 parts.append(skirt.build())
 
-belt = mk.Part('belt', 'rhips', 'leather', voxel=0.0024, smooth=3, tris=100, symmetric=True)
-belt.ellipsoid((0, 0.958, -0.045), (0.09, 0.015, 0.074))
+belt = mk.Part('belt', 'rhips', 'leather', remesh=False)
+belt.loft([((0, y, -0.045), (1, 0, 0), (0, 0, 1), 0.1 + d, 0.082 + d, 0.082 + d) for y, d in ((0.944, 0.0), (0.948, 0.003), (0.968, 0.003), (0.972, 0.0))],
+          seg=16 if LIGHT else 32, power=2.0, cap_start=False, cap_end=False)
 parts.append(belt.build())
 buckle = mk.Part('buckle', 'rhips', 'bronze', voxel=0.002, smooth=2, tris=40)
-buckle.ellipsoid((0, 0.958, 0.03), (0.016, 0.013, 0.006))
+buckle.ellipsoid((0, 0.958, 0.04), (0.016, 0.013, 0.006))
 parts.append(buckle.build())
 
 # ------------------------------------------------------------------------------------------------ rider: torso
-torso = mk.Part('torso', 'rtorso', 'team', voxel=0.0026, smooth=6, tris=360, symmetric=True)
-torso.ellipsoid((0, 0.99, -0.045), (0.082, 0.06, 0.063))                                         # abdomen
-torso.ellipsoid((0, 1.085, -0.042), (0.102, 0.082, 0.07))                                       # chest
-torso.ellipsoid((0, 1.15, -0.047), (0.114, 0.042, 0.06))                                        # shoulders
-torso.ellipsoid((0, 1.182, -0.058), (0.078, 0.04, 0.047))                                       # trapezius
-torso.ellipsoid((0, 1.17, -0.025), (0.06, 0.03, 0.045))                                         # collar and upper chest
-parts.append(torso.build())
+def capsule(part, p0, p1, profile, seg, fwd=(0, 0, 1), flat=1.0):
+    """A limb as one smooth lofted surface with rounded ends on the joints (as in human.py)."""
+    p0, p1 = V(p0), V(p1)
+    axis = (p1 - p0)
+    L = axis.length
+    axis.normalize()
+    f = V(fwd) - axis * axis.dot(V(fwd))
+    f = f.normalized() if f.length > 1e-6 else axis.orthogonal().normalized()
+    u = axis.cross(f)
+    r0, r1 = profile[0][1], profile[-1][1]
+    rings = []
+    domes = 2 if LIGHT else 4
+    for i in range(1, domes + 1):
+        a = math.pi / 2 * (1 - i / (domes + 1))
+        rings.append((p0 - axis * (r0 * math.sin(a)), r0 * math.cos(a)))
+    for t, r in profile:
+        rings.append((p0 + axis * (L * t), r))
+    for i in range(1, domes + 1):
+        a = math.pi / 2 * i / (domes + 1)
+        rings.append((p1 + axis * (r1 * math.sin(a)), r1 * math.cos(a)))
+    part.loft([(c, u, f, r * flat, r, r) for c, r in rings], seg=seg)
 
-cuirass = mk.Part('cuirass', 'rtorso', 'leather', voxel=0.0026, smooth=5, tris=340, symmetric=True)
-cuirass.ellipsoid((0, 0.995, -0.045), (0.094, 0.07, 0.076))
-cuirass.ellipsoid((0, 1.08, -0.042), (0.113, 0.088, 0.081))
-cuirass.ellipsoid((0, 1.148, -0.047), (0.094, 0.047, 0.068))                                   # upper chest, up to the collar
-cuirass.ellipsoid((0, 1.19, -0.045), (0.07, 0.05, 0.08), cut=True)                              # neckline
-for s in (1, -1):
-    cuirass.ellipsoid((0.112 * s, 1.1, -0.045), (0.03, 0.06, 0.05), cut=True)                   # arm holes
-parts.append(cuirass.build())
+
+def open_tube(part, a, b, profile, seg):
+    """An open sleeve lofted along a limb (profile: [(t, radius)] from a to b)."""
+    axis = (b - a)
+    L = axis.length
+    axis.normalize()
+    f = (V((0, 0, 1)) - axis * axis.z).normalized()
+    u = axis.cross(f)
+    part.loft([(a + axis * (L * t), u, f, r, r, r) for t, r in profile], seg=seg, cap_start=False, cap_end=False)
+
+
+def add(part, variant=None, turn=None):
+    obj = part.build()
+    if turn:
+        pivot, fn = turn
+        for v in obj.data.vertices:
+            g = V(mk.b2g(v.co)) - pivot
+            v.co = mk.g2b(tuple(pivot + V(fn(g))))
+        obj.data.update()
+    if variant:
+        obj['variant'] = variant
+    parts.append(obj)
+    return obj
+
+
+# the trunk: the standing body's cross-sections (human.py), seated on the saddle and a little broader
+def XF(p):
+    return (p[0] * 1.06, p[1] + 0.43, p[2] * 1.06 - 0.041)
+
+
+TORSO_RINGS = [(y + 0.43, w * 1.06, f * 1.06, b * 1.06, z * 1.06 - 0.041) for (y, w, f, b, z) in (
+    (0.455, 0.080, 0.062, 0.062, -0.004), (0.49, 0.084, 0.064, 0.064, -0.004), (0.53, 0.085, 0.066, 0.065, -0.004),
+    (0.58, 0.092, 0.071, 0.067, -0.002), (0.62, 0.098, 0.073, 0.068, 0.0), (0.66, 0.104, 0.071, 0.066, -0.002),
+    (0.695, 0.11, 0.063, 0.064, -0.006), (0.72, 0.1, 0.055, 0.058, -0.009), (0.738, 0.072, 0.047, 0.052, -0.012),
+    (0.752, 0.044, 0.036, 0.04, -0.012))]
+torso = mk.Part('torso', 'rtorso', 'team', remesh=False)
+torso.loft([((0, y, z), (1, 0, 0), (0, 0, 1), w, f, b) for (y, w, f, b, z) in TORSO_RINGS], seg=16 if LIGHT else 24, power=2.25)
+parts.append(torso.build())
+LAYERS = [('belt', ['skirt'], 0.002), ('buckle', ['belt'], 0.0015)]
 
 # ------------------------------------------------------------------------------------------------ rider: head
 CR = V((0.0, 1.29, -0.036))       # centre of the skull; the face is built around it
@@ -517,89 +653,194 @@ def hair_region(p, n):
 head.mask('hair', hair_region)
 parts.append(head.build())
 
-cap = mk.Part('cap', 'rhead', 'leather', voxel=0.002, smooth=4, tris=180, symmetric=True)
-cap.ellipsoid(CR + V((0, 0.03, -0.004)), (0.057, 0.042, 0.062))
-cap.ellipsoid(CR + V((0, 0.014, -0.006)), (0.06, 0.008, 0.064))                                # rim, above the brow
-cap.ellipsoid(CR + V((0, -0.056, -0.004)), (0.09, 0.07, 0.09), cut=True)                       # open underneath
-parts.append(cap.build())
-
 
 # ------------------------------------------------------------------------------------------------ rider: arms
 def arm(s, side):
     sh, el, wr, fist = SH[s], EL[s], WR[s], FIST[s]
-    up = mk.Part(f'uparm{side}', f'rarm{side}', 'skin', voxel=0.0022, smooth=4, tris=170)
-    up.ball(sh, 0.038)
-    up.limb(sh, el, 0.037, 0.031, seg=12)
-    up.ellipsoid(sh.lerp(el, 0.62) + V((0, 0, 0.006)), (0.033, 0.04, 0.034))                   # biceps, below the sleeve
-    sleeve = mk.Part(f'sleeve{side}', f'rarm{side}', 'team', voxel=0.0022, smooth=4, tris=110)
-    sleeve.ball(sh, 0.047)
-    sleeve.limb(sh, sh.lerp(el, 0.45), 0.046, 0.042, seg=12)
-    fore = mk.Part(f'forearm{side}', f'relbow{side}', 'skin', voxel=0.0022, smooth=4, tris=150)
-    fore.ball(el, 0.032)
-    fore.limb(el, wr, 0.031, 0.022, seg=12)
-    fore.ellipsoid(el.lerp(wr, 0.28), (0.031, 0.034, 0.031))                                     # forearm muscle
-    bracer = mk.Part(f'bracer{side}', f'relbow{side}', 'leather', voxel=0.002, smooth=3, tris=70)
-    bracer.limb(el.lerp(wr, 0.52), wr.lerp(el, 0.06), 0.03, 0.026, seg=12)
+    seg = 8 if LIGHT else 14
+    up = mk.Part(f'uparm{side}', f'rarm{side}', 'skin', remesh=False)
+    capsule(up, sh, el, [(0, 0.038), (0.25, 0.036), (0.6, 0.034), (0.85, 0.031), (1, 0.031)], seg)
+    # a smooth sleeve from a dome over the shoulder to an open hem above the elbow
+    axis = (el - sh).normalized()
+    fwd = (V((0, 0, 1)) - axis * axis.z).normalized()
+    lat = axis.cross(fwd)
+    end = (el - sh).length * 0.42
+    prof = [(-0.046, 0.012), (-0.04, 0.024), (-0.03, 0.033), (-0.015, 0.04), (0.005, 0.043), (0.03, 0.043),
+            (end * 0.6, 0.041), (end, 0.039)]
+    sleeve = mk.Part(f'sleeve{side}', f'rarm{side}', 'team', remesh=False)
+    sleeve.loft([(sh + axis * t, lat, fwd, r, r, r) for t, r in prof], seg=10 if LIGHT else 16, cap_end=False)
+    fore = mk.Part(f'forearm{side}', f'relbow{side}', 'skin', remesh=False)
+    capsule(fore, el, wr, [(0, 0.031), (0.25, 0.031), (0.55, 0.026), (1, 0.021)], seg)
+    out = [up, sleeve, fore]
+    if KIT['armor'] != 'plate':     # plate has vambraces
+        bracer = mk.Part(f'bracer{side}', f'relbow{side}', 'leather', remesh=False)
+        open_tube(bracer, el.lerp(wr, 0.5), wr.lerp(el, 0.04), [(0, 0.029), (0.5, 0.027), (1, 0.025)], 10 if LIGHT else 16)
+        out.append(bracer)
     hand = mk.Part(f'hand{side}', f'rhand{side}', 'skin', voxel=0.0018, smooth=3, tris=120)
     hand.ball(wr, 0.023)
-    if s < 0:
+    if CLOSED[s]:
         hand.limb(wr, fist, 0.02, 0.022, seg=10)                                                  # palm
-        hand.ellipsoid(fist, (0.024, 0.028, 0.032))                                               # fist round the spear
+        hand.ellipsoid(fist, (0.024, 0.028, 0.032))                                               # fist round the shaft
         hand.limb(fist + V((0.012 * s, 0.012, -0.008)), fist + V((0.004 * s, 0.018, 0.02)), 0.009, 0.007, seg=8)   # thumb
     else:
-        # a relaxed hand lying on the pommel, fingers curling over its front
+        # a relaxed hand lying on the saddle's horn, fingers curling over its front
         yaw = math.atan2(fist.x - wr.x, fist.z - wr.z)
         hand.limb(wr, fist, 0.02, 0.018, seg=10, flat=1.3)
         hand.ellipsoid(fist, (0.026, 0.013, 0.03), rot=(0.25, yaw, 0))
-        hand.ellipsoid(fist + V((-0.004, -0.014, 0.024)), (0.022, 0.014, 0.012), rot=(0.3, yaw, 0))
-        hand.limb(wr + V((-0.015, -0.004, 0.012)), fist + V((-0.022, -0.004, 0.0)), 0.009, 0.007, seg=8)       # thumb
-    return up, sleeve, fore, bracer, hand
+        hand.ellipsoid(fist + V((-0.004 * s, -0.014, 0.024)), (0.022, 0.014, 0.012), rot=(0.3, yaw, 0))
+        hand.limb(wr + V((-0.015 * s, -0.004, 0.012)), fist + V((-0.022 * s, -0.004, 0.0)), 0.009, 0.007, seg=8)   # thumb
+    out.append(hand)
+    return out
 
 
 for s, side in ((1, 'L'), (-1, 'R')):
     for piece in arm(s, side):
         parts.append(piece.build())
+    LAYERS += [(f'sleeve{side}', [f'uparm{side}'], 0.003), (f'bracer{side}', [f'forearm{side}'], 0.003)]
 
-# ------------------------------------------------------------------------------------------------ spear (right hand)
-SPEAR_DIR = V((0.03, 1.0, -0.12)).normalized()   # upright, butt a little forward of the grip, clear of the knee
-SPEAR_REAR, SPEAR_FRONT = 0.38, 0.95
-BONES.append({'name': 'rspear', 'parent': 'rtorso', 'pivot': list(GRIP)})
-butt = GRIP - SPEAR_DIR * SPEAR_REAR
-tip = GRIP + SPEAR_DIR * SPEAR_FRONT
-shaft = mk.Part('spearshaft', 'rspear', 'wood', voxel=0.002, smooth=2, tris=90)
-shaft.limb(butt, tip - SPEAR_DIR * 0.1, 0.0095, 0.0085, seg=8)
-parts.append(shaft.build())
-iron = mk.Part('spearhead', 'rspear', 'iron', voxel=0.0016, smooth=2, tris=110)
-head_base = tip - SPEAR_DIR * 0.12
-iron.limb(head_base - SPEAR_DIR * 0.02, head_base + SPEAR_DIR * 0.01, 0.011, 0.011, seg=8)     # socket
-iron.ellipsoid(head_base + SPEAR_DIR * 0.055, (0.022, 0.058, 0.005), rot=(-math.atan2(SPEAR_DIR.z, SPEAR_DIR.y), 0, 0))  # leaf blade
-iron.cone(head_base + SPEAR_DIR * 0.09, tip, 0.012, seg=6)
-iron.cone(butt + SPEAR_DIR * 0.03, butt - SPEAR_DIR * 0.03, 0.01, seg=6)                      # butt spike
-parts.append(iron.build())
-binding = mk.Part('spearbinding', 'rspear', 'leather', voxel=0.0016, smooth=2, tris=40)
-binding.limb(head_base - SPEAR_DIR * 0.045, head_base - SPEAR_DIR * 0.02, 0.012, 0.012, seg=8)
-parts.append(binding.build())
+# ------------------------------------------------------------------------------------------------ rider: kit
+# helmet, armour and quiver from equipment.py, fitted to the seated body
+HELD, SHIELD_PARTS = [], []
+BONE = {'head': 'rhead', 'torso': 'rtorso', 'hips': 'rhips'}
+for side in 'LR':
+    BONE.update({f'arm{side}': f'rarm{side}', f'elbow{side}': f'relbow{side}', f'hand{side}': f'rhand{side}'})
+CTX = dict(mk=mk, add=add, LAYERS=LAYERS, CR=CR, SH=SH, EL=EL, WR=WR, TORSO_RINGS=TORSO_RINGS, LIGHT=LIGHT,
+           held=HELD, shield_parts=SHIELD_PARTS, BONE=BONE, XF=XF, CUIRASS_Y=(0.9, 1.17), SEATED=True)
+kit = equipment.Kit(CTX, KIT)
+kit.helmet(KIT['helmet'])
+kit.armor(KIT['armor'])
+if KIT['armor'] == 'plate':
+    # greaves down the front of the shins, over the trousers and boots
+    for s, side in ((1, 'L'), (-1, 'R')):
+        hip, knee, shin_mid, ankle, toe = leg_path(s)
+        gr = mk.Part('greave' + side, 'rhips', 'steel', remesh=False)
+        open_tube(gr, knee, shin_mid, [(0.0, 0.043), (0.5, 0.041), (1.0, 0.039)], 10 if LIGHT else 16)
+        open_tube(gr, shin_mid, ankle, [(0.0, 0.039), (0.6, 0.036), (1.0, 0.033)], 10 if LIGHT else 16)
+        parts.append(gr.build())
+        LAYERS.append(('greave' + side, ['legs', 'boots'], 0.003))
+if KIT['quiver']:
+    kit.quiver()
+
+# ------------------------------------------------------------------------------------------------ weapon
+if WEAPON in ('spear', 'sword'):
+    # the weapon is its own bone (child of the torso) held in the right fist
+    WEAPON_DIR = V((0.03, 1.0, -0.12)).normalized()   # upright, butt a little forward of the grip, clear of the knee
+    BONES.append({'name': 'rweapon', 'parent': 'rtorso', 'pivot': list(GRIP)})
+    D = WEAPON_DIR
+    if WEAPON == 'spear':
+        SPEAR_REAR, SPEAR_FRONT = 0.38, 0.95
+        butt = GRIP - D * SPEAR_REAR
+        tip = GRIP + D * SPEAR_FRONT
+        shaft = mk.Part('spearshaft', 'rweapon', 'wood', voxel=0.002, smooth=2, tris=90)
+        shaft.limb(butt, tip - D * 0.1, 0.0095, 0.0085, seg=8)
+        parts.append(shaft.build())
+        iron = mk.Part('spearhead', 'rweapon', 'iron', voxel=0.0016, smooth=2, tris=110)
+        head_base = tip - D * 0.12
+        iron.limb(head_base - D * 0.02, head_base + D * 0.01, 0.011, 0.011, seg=8)     # socket
+        iron.ellipsoid(head_base + D * 0.055, (0.022, 0.058, 0.005), rot=(-math.atan2(D.z, D.y), 0, 0))  # leaf blade
+        iron.cone(head_base + D * 0.09, tip, 0.012, seg=6)
+        iron.cone(butt + D * 0.03, butt - D * 0.03, 0.01, seg=6)                      # butt spike
+        parts.append(iron.build())
+        binding = mk.Part('spearbinding', 'rweapon', 'leather', voxel=0.0016, smooth=2, tris=40)
+        binding.limb(head_base - D * 0.045, head_base - D * 0.02, 0.012, 0.012, seg=8)
+        parts.append(binding.build())
+        HELD += ['spearshaft', 'spearhead', 'spearbinding']
+    else:
+        # a cavalry sword: the blade up from the fist, its edges front and back
+        BLADE = 0.4
+        hilt = mk.Part('hilt', 'rweapon', 'darkleather', voxel=0.0015, smooth=2, tris=80)
+        hilt.limb(GRIP - D * 0.05, GRIP + D * 0.035, 0.012, 0.012, seg=8)
+        hilt.ball(GRIP - D * 0.062, 0.017)                                              # pommel
+        parts.append(hilt.build())
+        guard = mk.Part('guard', 'rweapon', 'gold' if KIT['elite'] else 'steel', voxel=0.0015, smooth=2, tris=80)
+        across = V((1, 0, 0))
+        guard.limb(GRIP + D * 0.042 - across * 0.05, GRIP + D * 0.042 + across * 0.05, 0.009, 0.009, seg=8)
+        parts.append(guard.build())
+        blade = mk.Part('blade', 'rweapon', 'steel', voxel=0.0015, smooth=2, tris=160)
+        blade.limb(GRIP + D * 0.05, GRIP + D * (0.05 + BLADE), 0.02, 0.006, seg=10, flat=0.28)
+        parts.append(blade.build())
+        HELD += ['hilt', 'guard', 'blade']
+else:
+    # the bow: its own bone held in the left fist; the stave passes through the fist, the tips curve back towards
+    # the rider, and the string is skinned to a 'nock' bone the right hand draws back
+    BOW_L = 0.25
+    BOW_U = V((1.0, 0.2, 0.05)).normalized()           # along the stave, upper limb first
+    BOW_B = (V((0, -0.15, -1.0)) - BOW_U * BOW_U.dot(V((0, -0.15, -1.0)))).normalized()   # towards the string
+    BONES.append({'name': 'rbow', 'parent': 'rtorso', 'pivot': list(BOW_GRIP)})
+    nock_rest = BOW_GRIP + BOW_B * 0.07
+    BONES.append({'name': 'nock', 'parent': 'rbow', 'pivot': list(nock_rest)})
+    n = 12
+    pts = [BOW_GRIP + BOW_B * (0.07 * (i / n * 2 - 1) ** 2) + BOW_U * (BOW_L * (i / n * 2 - 1)) for i in range(n + 1)]
+    stave = mk.Part('bow', 'rbow', 'wood', voxel=0.0015, smooth=2, tris=160)
+    for i in range(n):
+        stave.limb(pts[i], pts[i + 1], 0.011 - 0.004 * abs(i / n * 2 - 1), 0.011 - 0.004 * abs((i + 1) / n * 2 - 1), seg=8)
+    parts.append(stave.build())
+    string = mk.Part('bowstring', 'rbow', 'cord', remesh=False)
+    string.tube([pts[0].lerp(nock_rest, t / 5) for t in range(6)] + [nock_rest.lerp(pts[-1], t / 5) for t in range(1, 6)], 0.0018, seg=4)
+    string.mask('nock', lambda p, nn: max(0.0, 1 - abs((V(p) - BOW_GRIP).dot(BOW_U)) / BOW_L))
+    parts.append(string.build())
+    HELD += ['bow']
+
+# ------------------------------------------------------------------------------------------------ shield
+if KIT['shield'] != 'none':
+    # hung from the saddle's left front, beside the horse's shoulder in front of the rider's knee, facing out and
+    # forward (the left hand keeps the reins); built facing +x round a centre, then turned into place
+    SH_C = V((0.225, 0.84, 0.2))
+    SH_N = V((0.78, 0.0, 0.62)).normalized()
+    SH_U = (V((0, 1, -0.12)) - SH_N * SH_N.dot(V((0, 1, -0.12)))).normalized()
+    SH_W = SH_N.cross(SH_U)
+    CTX.update(GRIP_L=SH_C, SHIELD_BONE='rhips',
+               SHIELD_TURN=(SH_C, lambda o: SH_N * (o.x - 0.03) + SH_U * o.y + SH_W * o.z))
+    kit.shield(KIT['shield'])
+
+# ------------------------------------------------------------------------------------------------ cape
+if KIT['cape']:
+    # from the shoulders down his back, over the cantle and onto the horse's croup; the lower part follows the hips
+    cape = mk.Part('cape', 'rtorso', 'team', remesh=False)
+    spine = [V((0, 1.168, -0.118)), V((0, 1.08, -0.13)), V((0, 1.0, -0.14)), V((0, 0.94, -0.16)), V((0, 0.9, -0.21)),
+             V((0, 0.87, -0.27)), V((0, 0.85, -0.33))]
+    cols = 11
+    verts, faces = [], []
+    for i, c in enumerate(spine):
+        t = i / (len(spine) - 1)
+        half = 0.105 + 0.07 * t
+        for j in range(cols):
+            u = j / (cols - 1) * 2 - 1
+            # across the back the cloth curves round the shoulders; lower down it drapes over the horse
+            verts.append(tuple(c + V((u * half, -0.05 * u * u * t, 0.035 * u * u * (1 - t)))))
+    for i in range(len(spine) - 1):
+        for j in range(cols - 1):
+            a_ = i * cols + j
+            faces.append((a_, a_ + 1, a_ + cols + 1, a_ + cols))
+    cape.mesh(verts, faces)
+    cape.mask('rhips', lambda p, n: ss(1.02, 0.93, p[1]))
+    parts.append(cape.build())
 
 # ------------------------------------------------------------------------------------------------ layers
 # Each garment is pushed out from what it covers, and what it covers is pulled back in, so nothing shows through.
 by_name = {o.name: o for o in parts}
 LAYER_GAP = 1.6 if LIGHT else 1.0   # the light version's larger faces need more room
-LAYERS = [
-    ('cuirass', ['torso'], 0.004), ('sleeveL', ['uparmL'], 0.003), ('sleeveR', ['uparmR'], 0.003),
-    ('bracerL', ['forearmL'], 0.003), ('bracerR', ['forearmR'], 0.003), ('boots', ['legs'], 0.003),
-    ('skirt', ['legs'], 0.005), ('belt', ['skirt'], 0.002), ('buckle', ['belt'], 0.0015),
-    ('cap', ['head'], 0.008),
-]
+# the trousers first, then the kit's layers (sleeves, cuirass, helmet ...), the belt over all of them
+LAYERS = ([('boots', ['legs'], 0.003), ('skirt', ['legs'], 0.005)]
+          + [l_ for l_ in LAYERS if l_[0] not in ('belt', 'buckle')]
+          + [('belt', ['skirt', 'cuirass'], 0.002), ('buckle', ['belt'], 0.0015)])
 for outer, inners, gap in LAYERS:
-    out_n, in_n = mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
+    inners = [i for i in inners if i in by_name]
+    if outer not in by_name or not inners:
+        continue
+    # garments lie over smooth bodies: the nearest face's normal says which side a point is on (see Surface)
+    out_n, in_n = mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP, near=0.02)
     print(f'LAYER {outer:<9} over {"+".join(inners):<10} moved {out_n:4d} out, {in_n:4d} underneath in')
 
 # ------------------------------------------------------------------------------------------------ clearance
 # Straps laid across hollows dip in at their edges, and the fitted shapes can graze the horse where the surface
 # curves: push anything inside (or closer than a small gap) back out along the surface normal.
 TACK_GAP = {'cloth': 0.005, 'clothtrim': 0.006, 'saddle': 0.006, 'saddlebronze': 0.004, 'straps': 0.003,
-            'pendant': 0.002, 'bridle': 0.0025, 'bits': 0.002}
+            'pendant': 0.002, 'bridle': 0.0025, 'bits': 0.002, 'caparison': 0.008,
+            'captrim': 0.01, 'chamfron': 0.008, 'peytral': 0.016}
 for name, gap in TACK_GAP.items():
+    if name not in by_name:
+        continue
     inside, deep = CLEAR.push_out(by_name[name], gap)
     after = CLEAR.report(by_name[name])
     print(f'CLEARANCE {name:<13} inside before {inside:4d} (deepest {deep * 1000:.1f} mm)  after {after[0]}')
@@ -609,10 +850,14 @@ SEAT = mk.Surface(horse_obj, hair_obj, by_name['saddle'])
 
 
 def under_cloth(p):
-    return cloth_z0 - 0.01 < p[2] < cloth_z1 + 0.01 and p[1] > cloth_hem(p[2]) - 0.01
+    if CAPARISON and cap_z0 - 0.01 < p[2] < cap_z1 + 0.01 and p[1] > cap_hem(p[2]) - 0.01:
+        return True
+    return SADDLE_CLOTH and cloth_z0 - 0.01 < p[2] < cloth_z1 + 0.01 and p[1] > cloth_hem(p[2]) - 0.01
 
 
-for name in ('legs', 'boots', 'skirt'):
+for name in ('legs', 'boots', 'greaveL', 'greaveR', 'skirt'):
+    if name not in by_name:
+        continue
     obj = by_name[name]
     if name == 'skirt':
         # the tunic hangs over the trousers and must clear the saddle horns
@@ -633,8 +878,8 @@ for name in ('legs', 'boots', 'skirt'):
 
 # legs were moved off the horse after layering: lay the boots and tunic over them again
 for outer, inners, gap in LAYERS:
-    if outer in ('boots', 'skirt'):
-        mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP)
+    if outer in ('boots', 'skirt', 'greaveL', 'greaveR'):
+        mk.separate(by_name[outer], [by_name[i] for i in inners], gap * LAYER_GAP, near=0.02)
 # finally the tunic rests on the saddle: keep it out of the saddle (and the horse), then report what still overlaps
 SADDLE_ONLY = mk.Surface(horse_obj, by_name['saddle'])
 for _ in range(2):
@@ -647,6 +892,28 @@ for _ in range(3):
     for garment in ('legs', 'skirt'):
         mk.Surface(by_name[garment]).push_out(by_name['saddle'], 0.002, max_depth=0.03)
         mk.Surface(by_name['saddle']).push_out(by_name[garment], 0.001, max_depth=0.03)
+
+# the shield hangs clear of the horse, the tack and the rider's leg: move it out along its face until it does
+if SHIELD_PARTS:
+    shield_objs = [by_name[n] for n in SHIELD_PARTS if n in by_name]
+    AROUND = mk.Surface(*[o for o in [horse_obj, hair_obj] + [by_name.get(n) for n in
+                                                               ('legs', 'boots', 'greaveL', 'saddle', 'caparison', 'captrim', 'cloth', 'peytral')] if o])
+    for _ in range(4):
+        low = min(AROUND.signed_distance(mk.b2g(v.co))[0] for o in shield_objs for v in o.data.vertices)
+        if abs(low - 0.014) < 0.002:
+            break
+        for o in shield_objs:
+            for v in o.data.vertices:
+                v.co = v.co + mk.g2b(SH_N * (0.014 - low))
+            o.data.update()
+    print(f'SHIELD nearest the horse, tack or leg: {low * 1000:.1f} mm before the last check')
+# the cape lies over the back, the saddle and the croup
+if 'cape' in by_name:
+    UNDER = mk.Surface(*[o for o in [horse_obj, hair_obj] + [by_name.get(n) for n in
+                                                              ('torso', 'cuirass', 'skirt', 'belt', 'saddle', 'saddlebronze', 'caparison', 'quiver')] if o])
+    for _ in range(3):
+        UNDER.push_out(by_name['cape'], 0.008)
+    print('CAPE inside after:', UNDER.report(by_name['cape'])[0])
 
 # ------------------------------------------------------------------------------------------------ audit
 # Thin parts (saddle horns, cantle) can pierce a garment between its vertices, so test both directions.
@@ -667,6 +934,15 @@ for a_, b_ in AUDIT:
 horse_occluder = mk.object_from_export(horse_path, part_names=['body'], name='horse_occluder')[0]
 ao = mk.bake_ao(parts, dist=0.22, near=0.035, occluders=[horse_occluder])
 tris = mk.export_model(parts, ao, BONES, out_path)
+with open(out_path) as f_:
+    data_ = json.load(f_)
+data_['kit'] = dict(name=KIT_NAME, weapon=WEAPON, barding=BARDING, coat=KIT['coat'], helmet=KIT['helmet'], elite=KIT['elite'],
+                    held=HELD, shield=SHIELD_PARTS, poles={'L': list(POLE[1]), 'R': list(POLE[-1])},
+                    fist={'L': list(FIST[1]), 'R': list(FIST[-1])})
+if WEAPON == 'bow':
+    data_['kit']['bow'] = {'U': list(BOW_U), 'B': list(BOW_B), 'L': BOW_L}
+with open(out_path, 'w') as f_:
+    json.dump(data_, f_, separators=(',', ':'))
 print(f'EXPORTED {out_path}: {len(parts)} parts, {tris} triangles')
 
 if preview_path:
@@ -674,13 +950,15 @@ if preview_path:
         'skin': (0.62, 0.36, 0.2), 'hair': (0.06, 0.03, 0.015), 'eye': (0.01, 0.008, 0.007), 'team': (0.04, 0.1, 0.62),
         'leather': (0.25, 0.12, 0.05), 'darkleather': (0.07, 0.04, 0.02), 'trousers': (0.18, 0.11, 0.05),
         'wood': (0.2, 0.1, 0.04), 'iron': (0.45, 0.47, 0.5), 'bronze': (0.55, 0.32, 0.08), 'trim': (0.7, 0.6, 0.35),
+        'steel': (0.5, 0.52, 0.56), 'mail': (0.26, 0.27, 0.29), 'gold': (0.65, 0.4, 0.05), 'phrygian': (0.8, 0.78, 0.7),
+        'hood': (0.1, 0.15, 0.05), 'hat': (0.04, 0.03, 0.02), 'cord': (0.7, 0.6, 0.45),
     }
     colors = {}
     for o in parts:
         hm = mk.vertex_masks(o).get('hair')
         cols = []
         for i, a in enumerate(ao[o.name]):
-            c = PAL[o['mat']]
+            c = PAL.get(o['mat'], (0.5, 0.5, 0.5))
             if hm:
                 w = hm[i]
                 c = tuple(c[j] * (1 - w) + PAL['hair'][j] * w for j in range(3))
@@ -695,6 +973,10 @@ if preview_path:
     hme['mat'] = 'coat'
     colors_all[hme.name] = [(0.2, 0.085, 0.03)] * len(hme.data.vertices)
     parts_all.append(hme)
+    if os.environ.get('PREVIEW_ONLY'):   # debugging: render just these parts
+        keep = os.environ['PREVIEW_ONLY'].split(',')
+        for o in parts_all:
+            o.hide_render = o.name not in keep
     paths = mk.preview(parts_all, colors_all, preview_path, center=(0, 0.75, 0.05), size=1.6,
                        views=(('iso', 45.0, 30.0), ('side', 90.0, 8.0), ('front', 10.0, 12.0, (0, 0.9, 0.2), 1.2),
                               ('rider', 55.0, 20.0, (0, 1.12, 0.0), 0.62), ('head', 50.0, 10.0, (0, 0.95, 0.65), 0.45),

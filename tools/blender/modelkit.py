@@ -10,6 +10,7 @@ computed from rest-pose position and normal. Parts are exported as JSON relative
 """
 import json
 import math
+import os
 import random
 
 import bmesh
@@ -382,7 +383,7 @@ def preview(objs, colors, path, center, size=1.6, views=(('iso', 45.0, 30.0),), 
     colors: {object name: [(r, g, b) linear per vertex]}. A view is (name, azimuth, elevation[, centre, size]).
     """
     scene = bpy.context.scene
-    scene.render.engine = 'BLENDER_EEVEE_NEXT'
+    scene.render.engine = os.environ.get('PREVIEW_ENGINE', 'BLENDER_EEVEE_NEXT')
     scene.render.resolution_x, scene.render.resolution_y = res
     world = bpy.data.worlds.new('w')
     world.use_nodes = True
@@ -491,17 +492,18 @@ class Surface:
             o = loc + d * 1e-5
         return hits % 2 == 1
 
-    def signed_distance(self, p):
-        """Distance to the surface, negative inside. Near the surface the nearest face's normal decides; further
-        away (where a thin part's nearest face can point either way) ray parity decides."""
+    def signed_distance(self, p, near=0.004):
+        """Distance to the surface, negative inside. Near the surface (within `near`) the nearest face's normal
+        decides; further away (where a thin part's nearest face can point either way) ray parity decides. Parity is
+        wrong for open surfaces (a cuirass open at the neck and waist), so layering garments passes a larger `near`."""
         loc, nrm, _, dist = self.tree.find_nearest(g2b(p))
         if loc is None:
             return 1.0, None
         by_normal = (g2b(p) - loc).dot(nrm) < 0
-        is_in = by_normal if dist < 0.004 else self.inside(p)
+        is_in = by_normal if dist < near else self.inside(p)
         n = Vector(b2g(nrm))
         if is_in != by_normal:
-            n = -n if dist < 0.004 else (Vector(p) - Vector(b2g(loc))).normalized() * (-1 if is_in else 1)
+            n = -n if dist < near else (Vector(p) - Vector(b2g(loc))).normalized() * (-1 if is_in else 1)
         return (-dist if is_in else dist), n
 
     def push_out(self, obj, gap, only=None, max_depth=1.0):
@@ -548,7 +550,7 @@ class Surface:
         return Vector(b2g(loc)), Vector(b2g(nrm)), dist
 
 
-def separate(outer, inners, gap, poke=0.01):
+def separate(outer, inners, gap, poke=0.01, near=0.004):
     """
     Layers clothing over what it covers: vertices of `outer` closer than `gap` to (or inside) the union of `inners`
     move out along the surface normal; then vertices of each inner that poke through `outer`, or sit less than
@@ -557,7 +559,7 @@ def separate(outer, inners, gap, poke=0.01):
     under = Surface(*inners)
     moved_out = 0
     for v in outer.data.vertices:
-        d, n = under.signed_distance(b2g(v.co))
+        d, n = under.signed_distance(b2g(v.co), near)
         if n is not None and d < gap:
             v.co = v.co + g2b(n) * (gap - d)
             moved_out += 1
@@ -566,7 +568,7 @@ def separate(outer, inners, gap, poke=0.01):
     moved_in = 0
     for inner in inners:
         for v in inner.data.vertices:
-            d, n = over.signed_distance(b2g(v.co))
+            d, n = over.signed_distance(b2g(v.co), near)
             if n is not None and -gap < d < poke:
                 v.co = v.co - g2b(n) * (d + gap)
                 moved_in += 1

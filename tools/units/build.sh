@@ -12,10 +12,16 @@ run tools/blender/human.py -- female "$OUT/villager_f.json" --tris 0.38 &
 run tools/blender/horse.py -- "$OUT/horse.json" &
 run tools/blender/horse.py -- "$OUT/horse_light.json" --tris 0.38 &
 wait
-# the tack is fitted to the full-detail horse
-run tools/blender/rider.py -- "$OUT/horse.json" "$OUT/rider_light.json" --tris 0.38
+# units listed in one of equipment.py's tables (KITS or RIDER_KITS)
+kits() { awk "/^$1 = \{/{f=1;next} /^\}/{f=0} f" tools/blender/equipment.py | grep -oE "^    '[a-zA-Z]+': dict" | sed "s/    '//; s/': dict//"; }
+# horsemen: rider and tack fitted to the full-detail horse, dressed per unit (equipment.RIDER_KITS)
+for u in $(kits RIDER_KITS); do
+  run tools/blender/rider.py -- "$OUT/horse.json" "$OUT/cav_$u.json" kit=$u --tris 0.38 &
+  while [ "$(jobs -r | wc -l)" -ge 6 ]; do sleep 1; done
+done
+wait
 # foot soldiers, archers and the priest: the villager's body with each unit's kit (tools/blender/equipment.py)
-for u in $(grep -oE "^    '[a-zA-Z]+': dict" tools/blender/equipment.py | sed "s/    '//; s/': dict//"); do
+for u in $(kits KITS); do
   run tools/blender/human.py -- male "$OUT/kit_$u.json" kit=$u --tris 0.38 &
   while [ "$(jobs -r | wc -l)" -ge 6 ]; do sleep 1; done
 done

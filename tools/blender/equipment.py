@@ -47,6 +47,33 @@ KITS = {
 }
 
 
+# Horsemen (rider.py kit=<unit>): the rider's clothing and weapon, plus the horse's barding and coat.
+# weapon: spear (thrust), sword (cut), bow (shoots over the horse's head); barding: none (saddle cloth only), cloth
+# (a caparison in the player's colour), mail, plate (mail with a steel chamfron and peytral), gold (the paladin's)
+RIDER_KITS = {
+    'scout': dict(weapon='spear', helmet='cap', armor='leather', barding='none', coat='bay'),
+    'lightCav': dict(weapon='sword', helmet='conical', armor='leather', barding='cloth', coat='darkBay'),
+    'hussar': dict(weapon='sword', helmet='plumed', armor='mail', barding='cloth', coat='grey'),
+    'knight': dict(weapon='sword', helmet='full', armor='plate', shield='kite', barding='mail', coat='black'),
+    'cavalier': dict(weapon='sword', helmet='plumed', armor='plate', shield='kite', barding='plate', coat='darkBay'),
+    'paladin': dict(weapon='sword', helmet='plumed', armor='plate', shield='kite', cape=True, elite=True, barding='gold', coat='grey'),
+    'cavArcher': dict(weapon='bow', helmet='hood', quiver=True, barding='cloth', coat='bay'),
+    'heavyCavArcher': dict(weapon='bow', helmet='conical', armor='mail', quiver=True, barding='mail', coat='darkBay'),
+    'horseArcher': dict(weapon='bow', helmet='phrygian', quiver=True, barding='cloth', coat='chestnut'),
+    'eliteHorseArcher': dict(weapon='bow', helmet='phrygian', armor='mail', quiver=True, elite=True, barding='mail', coat='grey'),
+}
+
+
+def rider_kit(name):
+    k = dict(RIDER_KITS[name])
+    for f, d in (('helmet', 'none'), ('armor', 'none'), ('shield', 'none'), ('barding', 'none'), ('coat', 'bay')):
+        k.setdefault(f, d)
+    for f in ('cape', 'quiver', 'sash', 'bare', 'robe', 'beard', 'elite', 'relic'):
+        k.setdefault(f, False)
+    k.setdefault('tunic', 'team')
+    return k
+
+
 def kit(name):
     k = dict(KITS[name])
     k.setdefault('helmet', 'none')
@@ -71,7 +98,14 @@ class Kit:
         self.CR = ctx['CR']
 
     def part(self, name, bone, mat, tris=160, voxel=0.0018, smooth=3, symmetric=False, remesh=True):
+        # a rider's bones carry an 'r' prefix (rhead, rtorso, rarmL ...): ctx['BONE'] maps the standing names to them
+        bone = self.c.get('BONE', {}).get(bone, bone)
         return self.mk.Part(name, bone, mat, voxel=voxel, smooth=smooth, tris=tris, symmetric=symmetric, remesh=remesh)
+
+    def xf(self, p):
+        """A point on the standing body's trunk, moved onto this body's trunk (the rider sits higher and further back)."""
+        f = self.c.get('XF')
+        return V(f(p)) if f else V(p)
 
     def build(self):
         k = self.k
@@ -195,6 +229,20 @@ class Kit:
             f = self.part('feather', 'head', 'feather', tris=80)
             f.limb(CR + V_((0.01, 0.02, -0.06)), CR + V_((0.02, 0.13, -0.09)), 0.008, 0.003, seg=6, flat=0.35)
             self.add(f)
+        elif h == 'phrygian':
+            # a soft felt cap whose crown flops forward over the brow
+            p = self.part('helmet', 'head', 'phrygian', tris=380, symmetric=True, smooth=6)
+            p.ellipsoid(CR + V_((0, 0.012, -0.004)), (0.064, 0.064, 0.069))
+            p.limb(CR + V_((0, 0.04, -0.012)), CR + V_((0, 0.09, 0.012)), 0.048, 0.03, seg=16)
+            p.limb(CR + V_((0, 0.09, 0.012)), CR + V_((0, 0.085, 0.05)), 0.03, 0.017, seg=14)
+            p.ball(CR + V_((0, 0.085, 0.05)), 0.017)
+            for s in (1, -1):
+                p.ellipsoid(CR + V_((0.05 * s, -0.035, -0.012)), (0.014, 0.045, 0.03))           # lappets over the ears
+            p.ellipsoid(CR + V_((0, -0.075, 0.03)), (0.2, 0.05, 0.2), cut=True)
+            p.ellipsoid(CR + V_((0, -0.035, 0.075)), (0.04, 0.05, 0.06), cut=True)              # open face
+            self.hollow(p)
+            self.add(p)
+            self.layers.append(('helmet', ['head'], 0.004))
         elif h == 'wolf':
             p = self.part('helmet', 'head', 'fur', tris=320, symmetric=True, smooth=6)
             p.ellipsoid(CR + V_((0, 0.014, -0.01)), (0.072, 0.066, 0.076))
@@ -220,7 +268,8 @@ class Kit:
         light = self.c['LIGHT']
         # the cuirass follows the trunk's own cross-sections, a little larger, open at the neck and the waist
         off = 0.006
-        rings = [(y, w, f, b, z) for (y, w, f, b, z) in self.c['TORSO_RINGS'] if 0.47 <= y <= 0.74]
+        lo, hi = self.c.get('CUIRASS_Y', (0.47, 0.74))
+        rings = [(y, w, f, b, z) for (y, w, f, b, z) in self.c['TORSO_RINGS'] if lo <= y <= hi]
         cu = self.part('cuirass', 'torso', mat, remesh=False)
         cu.loft([((0, y, z), (1, 0, 0), (0, 0, 1), w + off, f + off, b + off) for (y, w, f, b, z) in rings],
                 seg=16 if light else 24, power=2.25, cap_start=False, cap_end=False)
@@ -228,14 +277,15 @@ class Kit:
         self.layers.append(('cuirass', ['torso'], 0.004))
         if a == 'lamellar':
             bands = self.part('bands', 'torso', 'gold', remesh=False)
-            for y0 in (0.58, 0.64):
+            for y0 in [self.xf((0, y, 0)).y for y in (0.58, 0.64)]:
                 near = min(self.c['TORSO_RINGS'], key=lambda r: abs(r[0] - y0))
                 _, w, f, b, z = near
                 bands.loft([((0, y, z), (1, 0, 0), (0, 0, 1), w + 0.011, f + 0.011, b + 0.011) for y in (y0, y0 + 0.01)],
                            seg=16 if light else 24, power=2.25, cap_start=False, cap_end=False)
             self.add(bands)
             self.layers.append(('bands', ['cuirass'], 0.002))
-        if a in ('mail', 'lamellar'):
+        seated = self.c.get('SEATED', False)   # a rider's legs are dressed by rider.py
+        if a in ('mail', 'lamellar') and not seated:
             # a short skirt of mail (or lacquered plates) over the tunic, skinned like it
             ms = self.part('mailskirt', 'hips', mat, remesh=False)
             ms.loft([((0, y, -0.004), (1, 0, 0), (0, 0, 1), r, r * 0.8, r * 0.8) for y, r in ((0.5, 0.097), (0.46, 0.104), (0.41, 0.112), (0.36, 0.121))],
@@ -263,7 +313,7 @@ class Kit:
                 self.tube(vb, el, wr, [(0.35, 0.034), (0.62, 0.031), (0.9, 0.027)])
                 self.add(vb)
                 self.layers.append(('vambrace' + side, ['forearm' + side], 0.003))
-        if a in ('plate', 'bronze'):
+        if a in ('plate', 'bronze') and not seated:
             for s, side in ((1, 'L'), (-1, 'R')):
                 knee, ankle = self.c['KNEE'][s], self.c['ANKLE'][s]
                 gr = self.part('greave' + side, 'knee' + side, 'steel' if a == 'plate' else 'bronze', remesh=False)
@@ -317,12 +367,12 @@ class Kit:
     def quiver(self):
         V_ = V
         q = self.part('quiver', 'torso', 'leather', tris=160)
-        q.limb(V_((0.06, 0.53, -0.1)), V_((-0.04, 0.74, -0.1)), 0.028, 0.032, seg=12)
+        q.limb(self.xf((0.06, 0.53, -0.1)), self.xf((-0.04, 0.74, -0.1)), 0.028, 0.032, seg=12)
         self.add(q)
         self.layers.append(('quiver', ['torso'] + (['cuirass'] if self.k['armor'] != 'none' else []), 0.006))
         f = self.part('fletching', 'torso', 'feather', tris=100)
         for dx in (-0.012, 0.0, 0.012):
-            f.cone(V_((-0.04 + dx, 0.74, -0.1)), V_((-0.05 + dx, 0.79, -0.1)), 0.009, seg=5)
+            f.cone(self.xf((-0.04 + dx, 0.74, -0.1)), self.xf((-0.05 + dx, 0.79, -0.1)), 0.009, seg=5)
         self.add(f)
 
     # ---------------------------------------------------------------------------------------- shields
@@ -332,36 +382,38 @@ class Kit:
         g = self.c['GRIP_L']
         # built facing +x (outward) from the fist, then the fist's hold turns it; offsets keep the arm clear
         out = 0.03
+        sb = self.c.get('SHIELD_BONE', 'handL')    # a rider's shield hangs from the saddle
+        turn = self.c.get('SHIELD_TURN')           # and is turned to lie beside the horse's shoulder
         if kind in ('round', 'small', 'hoplon'):
             import math
             r = {'round': 0.13, 'small': 0.09, 'hoplon': 0.16}[kind]
             c = g + V_((out, 0.03, 0))
-            face = self.part('shield', 'handL', 'team', tris=260, smooth=3)
+            face = self.part('shield', sb, 'team', tris=260, smooth=3)
             face.limb(c, c + V_((0.016, 0, 0)), r, r, seg=28, flat=1.0)
             face.ellipsoid(c + V_((0.016, 0, 0)), (0.009 if kind != 'hoplon' else 0.013, r * 0.92, r * 0.92))   # domed front
-            self.add(face)
+            self.add(face, None, turn)
             ring = [c + V_((0.012, r * math.cos(a), r * math.sin(a))) for a in [2 * math.pi * i / 36 for i in range(37)]]
-            rim = self.mk.Part('shieldrim', 'handL', 'bronze' if kind == 'hoplon' else 'wood', remesh=False)
+            rim = self.part('shieldrim', sb, 'bronze' if kind == 'hoplon' else 'wood', remesh=False)
             rim.tube(ring, 0.011 if kind == 'hoplon' else 0.008, seg=6)
-            self.add(rim)
-            boss = self.part('shieldboss', 'handL', 'bronze' if kind == 'hoplon' else 'steel', tris=100)
+            self.add(rim, None, turn)
+            boss = self.part('shieldboss', sb, 'bronze' if kind == 'hoplon' else 'steel', tris=100)
             boss.ellipsoid(c + V_((0.03 if kind != 'hoplon' else 0.036, 0, 0)), (0.018, 0.03, 0.03))
-            self.add(boss)
+            self.add(boss, None, turn)
         elif kind == 'kite':
-            face = self.part('shield', 'handL', 'team', tris=300, smooth=4)
+            face = self.part('shield', sb, 'team', tris=300, smooth=4)
             face.limb(g + V_((out, 0.07, 0)), g + V_((out, -0.22, 0)), 0.1, 0.02, seg=24, flat=0.18, caps=True)
             face.ellipsoid(g + V_((out, 0.07, 0)), (0.02, 0.05, 0.1))
-            self.add(face)
-            boss = self.part('shieldboss', 'handL', 'steel', tris=80)
+            self.add(face, None, turn)
+            boss = self.part('shieldboss', sb, 'steel', tris=80)
             boss.ellipsoid(g + V_((out + 0.022, 0.0, 0)), (0.014, 0.025, 0.025))
-            self.add(boss)
+            self.add(boss, None, turn)
         elif kind == 'scutum':
-            face = self.part('shield', 'handL', 'team', tris=320, smooth=3)
+            face = self.part('shield', sb, 'team', tris=320, smooth=3)
             face.limb(g + V_((out + 0.02, 0.2, 0)), g + V_((out + 0.02, -0.22, 0)), 0.11, 0.11, seg=24, flat=0.2, caps=False)
-            self.add(face)
-            boss = self.part('shieldboss', 'handL', 'gold', tris=80)
+            self.add(face, None, turn)
+            boss = self.part('shieldboss', sb, 'gold', tris=80)
             boss.ellipsoid(g + V_((out + 0.045, 0.0, 0)), (0.016, 0.03, 0.03))
-            self.add(boss)
+            self.add(boss, None, turn)
         self.c['shield_parts'].extend(['shield', 'shieldrim', 'shieldboss'])
 
     # ---------------------------------------------------------------------------------------- weapons

@@ -1,8 +1,8 @@
 // Bakes the new unit models for the game: vertex colours, merged parts, skinning data and animation clips sampled
 // from the same pose code the review pages used (villager poses, horse gaits, rider thrust).
 //   node tools/units/bake.cjs <export-dir> <out-dir>
-// <export-dir> holds the Blender exports (villager_m.json, villager_f.json, horse_light.json, rider_light.json);
-// <out-dir> receives villager.json, villagerF.json and scout.json.
+// <export-dir> holds the Blender exports (villager_m.json, villager_f.json, horse_light.json, kit_<unit>.json for foot
+// soldiers, cav_<unit>.json for horsemen); <out-dir> receives <unit>.json for each and index.json.
 process.removeAllListeners('warning');
 const THREE = require('three');
 const fs = require('fs');
@@ -33,6 +33,14 @@ const RIDER_KIT = {
   wood: 0x6a4a2a, iron: 0xa8acb4, bronze: 0xb88a3a, trim: 0xd8c89a,
 };
 const BAY = { coat: 0x8a5a32, points: 0x1c1612, hair: 0x19130f };
+/** Horse coats: body, points (lower legs, muzzle, ears), mane and tail, and white markings shown (blaze, socks). */
+const COATS = {
+  bay: BAY,
+  darkBay: { coat: 0x4e3020, points: 0x16110e, hair: 0x120e0b },
+  black: { coat: 0x2a2320, points: 0x1c1816, hair: 0x141110 },
+  grey: { coat: 0xc4c0b8, points: 0x6a6660, hair: 0xd4d0c8, dapple: 0x9a968e },
+  chestnut: { coat: 0xa0582a, points: 0x8a4a22, hair: 0x7a3e1c, white: 0xece6da },
+};
 const HOOF = 0x2e2a26, HORN = 0x2a2420, NOSTRIL = 0x140f0c, EYE = 0x0c0907;
 
 function mix(c, hex, w) {
@@ -49,24 +57,40 @@ function villagerColor(p, i) {
   if (m.beard) mix(c, VILLAGER_BEARD, m.beard[i]);
   return c;
 }
-function scoutColor(p, i) {
-  const m = p.masks || {};
-  if (p.mat === 'team') return new THREE.Color(1, 1, 1);
-  const horsePart = p.mat === 'coat' || ((p.mat === 'hair' || p.mat === 'eye') && !p.bone.startsWith('r'));
-  if (horsePart) {
-    const c = lin(p.mat === 'hair' ? BAY.hair : p.mat === 'eye' ? EYE : BAY.coat);
-    if (p.mat === 'coat') {
-      if (m.points) mix(c, BAY.points, m.points[i]);
-      if (m.hoof) mix(c, HOOF, m.hoof[i]);
-      if (m.horn) mix(c, HORN, m.horn[i] * 0.9);
-      if (m.nostril) mix(c, NOSTRIL, m.nostril[i] * 0.85);
+/** Colours of a horseman: the horse in its coat, the rider and tack in the kit palette (see riderLook). */
+function riderColor(coat = BAY, look = {}) {
+  const pal = { ...SOLDIER_KIT, ...RIDER_KIT, ...look };
+  return (p, i) => {
+    const m = p.masks || {};
+    if (p.mat === 'team') return new THREE.Color(1, 1, 1);
+    const horsePart = p.mat === 'coat' || ((p.mat === 'hair' || p.mat === 'eye') && !p.bone.startsWith('r'));
+    if (horsePart) {
+      const c = lin(p.mat === 'hair' ? coat.hair : p.mat === 'eye' ? EYE : coat.coat);
+      if (p.mat === 'coat') {
+        if (m.dapple && coat.dapple) mix(c, coat.dapple, m.dapple[i] * 0.6);
+        if (m.points) mix(c, coat.points, m.points[i]);
+        if (coat.white) {
+          if (m.blaze) mix(c, coat.white, m.blaze[i]);
+          if (m.sock) mix(c, coat.white, m.sock[i]);
+        }
+        if (m.hoof) mix(c, HOOF, m.hoof[i]);
+        if (m.horn) mix(c, HORN, m.horn[i] * 0.9);
+        if (m.nostril) mix(c, NOSTRIL, m.nostril[i] * 0.85);
+      }
+      return c;
     }
+    let hex = pal[p.mat] ?? pal.leather;
+    if (look.helm && p.name === 'helmet') hex = look.helm;
+    const c = lin(hex);
+    if (m.hair) mix(c, pal.hair, m.hair[i]);
     return c;
-  }
-  const c = lin(RIDER_KIT[p.mat] ?? RIDER_KIT.leather);
-  if (m.hair) mix(c, RIDER_KIT.hair, m.hair[i]);
-  return c;
+  };
 }
+/** Per-unit colours of the horsemen (as the game's procedural models had them). */
+const RIDER_LOOK = {
+  horseArcher: { skin: 0xc89066, helm: 0xa83a24 }, eliteHorseArcher: { skin: 0xc89066, helm: 0xd4a93a },
+  paladin: { helm: 0xd4a93a },
+};
 
 // ------------------------------------------------------------------------------------------------ parts
 /**
@@ -241,10 +265,11 @@ function bakeVillager(file, id) {
     parts: mergeParts(model, villagerColor), clips, meta };
 }
 
-// ------------------------------------------------------------------------------------------------ scout (horse + rider)
-function bakeScout() {
+// ------------------------------------------------------------------------------------------------ horsemen (horse + rider)
+function bakeRider(file, id) {
   const horse = load('horse_light.json');
-  const rider = load('rider_light.json');
+  const rider = load(file);
+  const kit = rider.kit || { name: id, weapon: 'spear', coat: 'bay' };
   // one skeleton: the horse's bones, then the rider's (which hang off the horse's body)
   const bones = [...horse.bones];
   for (const b of rider.bones) if (!bones.some((o) => o.name === b.name)) bones.push(b);
@@ -253,7 +278,7 @@ function bakeScout() {
   const horseBones = horse.bones.map((b) => b.name);
   const riderBones = rider.bones.map((b) => b.name).filter((n) => !horseBones.includes(n));
   const gait = makeHorseGait(horse.bones);
-  const rp = makeRiderPose(THREE, rider.bones);
+  const rp = makeRiderPose(THREE, rider.bones, {}, rider.kit || null);
   const euler = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, 0, e.rz || 0)).toArray(), p: [0, e.py || 0, 0] });
   const horsePose = (raw) => Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, euler(v)]));
   const clips = {};
@@ -269,12 +294,12 @@ function bakeScout() {
   const meta = {
     kind: 'scout',
     gaits: Object.fromEntries(['walk', 'trot', 'canter'].map((g) => [g, { speed: GAITS[g].speed }])),
-    // the thrust lands at half-way through the rider's attack
+    // the thrust (cut, loose) lands half-way through the rider's attack
     attackHit: rp.ATTACK_PERIOD * 0.5,
     bend: BEND,
   };
-  return { id: 'scout', height: 1.7, bones: bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
-    parts: mergeParts(model, scoutColor), clips, meta };
+  return { id, height: 1.7, bones: bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, riderColor(COATS[kit.coat] || BAY, RIDER_LOOK[id] || {})), clips, meta };
 }
 
 /**
@@ -410,11 +435,12 @@ function pack(part) {
 const jobs = [
   ['villager', () => bakeVillager('villager_m.json', 'villager')],
   ['villagerF', () => bakeVillager('villager_f.json', 'villagerF')],
-  ['scout', () => bakeScout()],
 ];
 for (const f of fs.readdirSync(inDir)) {
   const m = f.match(/^kit_(\w+)\.json$/);
   if (m) jobs.push([m[1], () => bakeSoldier(m[1])]);
+  const c = f.match(/^cav_(\w+)\.json$/);
+  if (c) jobs.push([c[1], () => bakeRider(f, c[1])]);
 }
 fs.writeFileSync(path.join(outDir, 'index.json'), JSON.stringify(jobs.map(([id]) => id)));
 for (const [id, make] of jobs) {
