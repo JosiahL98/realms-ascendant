@@ -228,6 +228,8 @@ function soldierClips(rig: BakedRig, st: AnimState, relic: boolean): Layer[] {
     const carrying = relic && rig.clips.has('carryWalk');
     const walkT = st.time * (st.speed / (rig.meta.walkSpeed ?? 0.8)) + st.seed;
     if (st.moving) push(carrying ? 'carryWalk' : 'walk', walkT);
+    // between blows the weapon stays at the guard (a pike levelled, a sword raised) rather than going back to rest
+    else if (st.guard && rig.clips.has('guard')) push('guard', st.time + st.seed);
     else push(carrying ? 'carryIdle' : 'idle', st.time + st.seed * 7);
   }
   return out;

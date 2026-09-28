@@ -616,6 +616,9 @@ function bakeSoldier(id) {
     clips.carryWalk = bakeClip(model.bones, names, (t) => P.pose('walk', t, true), walkT, 30, true);
   } else {
     clips.attack = bakeClip(model.bones, names, (t) => P.pose('attack', t), P.ATTACK, 30, false);
+    // held between blows: the attack's opening (and closing) pose, so the weapon does not go back to rest and snap
+    // to the guard again at every blow
+    clips.guard = bakeClip(model.bones, names, () => P.pose('attack', 0), 1, 2, true);
   }
   const look = SOLDIER_LOOK[id] || {};
   const meta = { kind: 'soldier', walkSpeed: P.WALK.speed, attackHit: P.ATTACK * 0.5, scale: look.scale || 1 };

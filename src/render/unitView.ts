@@ -129,6 +129,7 @@ export class UnitView {
         tool: u.def.gatherer ? (u.anim === 'work' || u.order.t === 'gather' || u.order.t === 'build' || u.order.t === 'repair' ? u.tool : null) : null,
         seed: (u.id % 97) * 0.37,
         packed: u.packed,
+        guard: !moving && u.cooldown > 0 && u.targetId !== 0,
       }, colorOf(u.owner), carry, u.relicId > 0, u.anim === 'work', 1);
     }
     // corpses

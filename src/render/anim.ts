@@ -14,6 +14,8 @@ export interface AnimState {
   tool: WorkTool;
   seed: number;
   packed: boolean;
+  /** Fighting, between blows: soldiers keep their weapon at the guard instead of going back to idle. */
+  guard?: boolean;
 }
 
 export const BONE_STRIDE = 7;
