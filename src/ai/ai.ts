@@ -134,6 +134,7 @@ export class AIPlayer {
     this.defend();
     this.rebuildTownCenter();
     this.staffFoundations();
+    this.repairBuildings();
     this.trainVillagers();
     this.housing();
     this.herdSheep();
@@ -294,6 +295,36 @@ export class AIPlayer {
     if (spot && this.place('townCenter', spot, Math.min(6, this.vills.length))) {
       this.baseX = spot.tx + 2;
       this.baseZ = spot.tz + 2;
+    }
+  }
+
+  /**
+   * Damaged buildings get villagers to mend them: more hands for the Town Center and castles. Buildings where the
+   * enemy is get help only if they are the ones that fight back (Town Center, castle, towers); walls and gates are left.
+   */
+  private repairBuildings(): void {
+    if (this.n % 4 !== 0 || this.vills.length < 6) return;
+    const g = this.game, p = this.p;
+    for (const b of this.myBuildings) {
+      if (!b.built || b.def.walkable || b.def.wall || b.def.gate) continue;
+      const max = b.stats.hp;
+      const key = b.type === 'townCenter' || b.type === 'castle';
+      const defends = key || !!b.def.attack;
+      if (b.hp >= max * (key ? 0.9 : 0.7)) continue;
+      if (!defends && this.dangerAt(b.x, b.z)) continue;
+      // repairing costs a little wood (and stone for stone buildings): keep a small float for it
+      const cost = b.stats.cost;
+      if ((cost.wood && p.res.wood < 20) || (cost.stone && p.res.stone < 15)) continue;
+      const want = key ? 4 : b.def.attack ? 2 : 1;
+      const on = this.vills.filter((u) => u.order.t === 'repair' && u.order.target === b.id).length;
+      if (on >= want) continue;
+      const helpers = this.vills
+        .filter((u) => u.order.t !== 'repair' && u.order.t !== 'build' && u.order.t !== 'garrison' && !u.garrisonedIn
+          && !(u.order.t === 'gather' && u.gatherKind === 'farm') && Math.hypot(u.x - b.x, u.z - b.z) < 22)
+        .sort((a, c) => Math.hypot(a.x - b.x, a.z - b.z) - Math.hypot(c.x - b.x, c.z - b.z))
+        .slice(0, want - on);
+      if (helpers.length) this.cmd({ c: 'repair', units: helpers.map((u) => u.id), target: b.id });
+      void g;
     }
   }
 

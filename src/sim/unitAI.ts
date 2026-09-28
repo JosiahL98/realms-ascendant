@@ -750,6 +750,20 @@ function findWork(game: Game, u: Unit): void {
       setOrder(game, u, { t: 'build', target: site.id });
       return;
     }
+    // then a damaged building close by (not walls: a player mends those on purpose), with no enemy about
+    let hurt: Building | null = null;
+    let hd = 8;
+    for (const b of game.buildings) {
+      if (!b.alive || !b.built || b.owner !== u.owner || b.def.walkable || b.def.wall || b.hp >= b.stats.hp * 0.95) continue;
+      const d = distToRect(u.x, u.z, b.tx, b.tz, b.tx + b.w, b.tz + b.h);
+      if (d >= hd || findEnemyTarget(game, u, 6, false)) continue;
+      hd = d;
+      hurt = b;
+    }
+    if (hurt) {
+      setOrder(game, u, { t: 'repair', target: hurt.id });
+      return;
+    }
   }
   const last = u.lastGatherKind && AUTO_KINDS.includes(u.lastGatherKind) ? u.lastGatherKind : null;
   let best: ResourceNode | Unit | Building | null = null;
