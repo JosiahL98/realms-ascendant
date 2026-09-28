@@ -132,6 +132,7 @@ export class AIPlayer {
     }
     this.scanEnemies();
     this.defend();
+    this.rebuildTownCenter();
     this.staffFoundations();
     this.trainVillagers();
     this.housing();
@@ -166,6 +167,8 @@ export class AIPlayer {
   /** Resources we are saving for the next age. */
   private reserve(): Partial<Record<Res, number>> {
     const p = this.p;
+    // with no Town Center, everything is saved for a new one
+    if (this.count('townCenter') === 0) return p.buildingCost('townCenter');
     const nextAge = p.age < 3 ? ['feudalAge', 'castleAge', 'imperialAge'][p.age] : null;
     if (!nextAge || !this.wantsAgeUp()) return {};
     return TECHS[nextAge].cost;
@@ -258,6 +261,42 @@ export class AIPlayer {
 
   /* ---------------------------------------------------------------- economy */
 
+  /**
+   * A realm that has lost its Town Center raises a new one: near the old site unless the enemy is there, otherwise
+   * where its villagers are. Until it can afford it, the stock is saved (see reserve) and a few villagers are put on
+   * whatever is short.
+   */
+  private rebuildTownCenter(): void {
+    if (this.count('townCenter') > 0 || !this.vills.length) return;
+    const p = this.p;
+    const cost = p.buildingCost('townCenter');
+    if (!p.canAfford(cost)) {
+      // put some workers on what is short: the usual assignment only moves idle villagers
+      for (const k of ['stone', 'wood'] as const) {
+        if (p.res[k] >= (cost[k] ?? 0)) continue;
+        const on = this.vills.filter((u) => u.order.t === 'gather' && this.gatherGroup(u.gatherKind) === k).length;
+        const need = Math.min(k === 'stone' ? 3 : 4, Math.ceil(this.vills.length / 4)) - on;
+        if (need <= 0) continue;
+        const spare = this.vills
+          .filter((u) => u.order.t === 'idle' || (u.order.t === 'gather' && this.gatherGroup(u.gatherKind) === 'food' && u.gatherKind !== 'farm'))
+          .slice(0, need);
+        for (const u of spare) this.sendTo(u, k);
+      }
+      return;
+    }
+    if (this.placedRecently('townCenter', 15)) return;
+    let cx = this.baseX, cz = this.baseZ;
+    if (this.dangerAt(cx, cz)) {
+      cx = this.vills.reduce((a, u) => a + u.x, 0) / this.vills.length;
+      cz = this.vills.reduce((a, u) => a + u.z, 0) / this.vills.length;
+    }
+    const spot = this.findSpot('townCenter', cx, cz, 0, 16, 1) ?? this.findSpot('townCenter', cx, cz, 16, 30, 0);
+    if (spot && this.place('townCenter', spot, Math.min(6, this.vills.length))) {
+      this.baseX = spot.tx + 2;
+      this.baseZ = spot.tz + 2;
+    }
+  }
+
   /** Unfinished buildings with nobody working on them get the nearest villager. */
   private staffFoundations(): void {
     const g = this.game;
@@ -306,6 +345,7 @@ export class AIPlayer {
   private housing(): void {
     const p = this.p;
     if (p.popCap >= p.maxPop) return;
+    if (this.count('townCenter') === 0) return;   // no one to train: the wood goes to a new Town Center
     const pending = this.myBuildings.filter((b) => b.type === 'house' && !b.built).length;
     const headroom = p.popCap - p.pop;
     const need = headroom <= (p.age >= 2 ? 8 : 4) ? (p.age >= 2 ? 2 : 1) : 0;
@@ -349,6 +389,12 @@ export class AIPlayer {
       ratio.stone += 0.06;
       ratio.food -= 0.03;
       ratio.wood -= 0.03;
+    }
+    // no Town Center: wood and stone for a new one
+    if (this.count('townCenter') === 0) {
+      const c = this.p.buildingCost('townCenter');
+      if (this.p.res.stone < (c.stone ?? 0)) ratio.stone += 0.25;
+      if (this.p.res.wood < (c.wood ?? 0)) ratio.wood += 0.2;
     }
     // adapt to stockpiles: move workers away from hoarded resources toward scarce ones
     let sum = 0;
@@ -509,7 +555,7 @@ export class AIPlayer {
     }
     // gold / stone
     const kind: GatherKind = k;
-    if (this.p.age === 0 && k === 'stone') return false;
+    if (this.p.age === 0 && k === 'stone' && this.count('townCenter') > 0) return false;
     const mine = this.nearestRes(kind, bx, bz, 40, (r) => !this.dangerAt(r.x, r.z));
     if (!mine) return false;
     if (this.dropoffNear(k, mine.x, mine.z, 4)) return this.cmd({ c: 'gather', units: [u.id], target: mine.id });

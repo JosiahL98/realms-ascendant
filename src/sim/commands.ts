@@ -79,7 +79,9 @@ export function buildingAvailable(game: Game, p: Player, type: string): { ok: bo
   if (!def) return { ok: false, visible: false };
   if (p.isDisabled(type)) return { ok: false, visible: false };
   if (def.age > p.age) return { ok: false, visible: false };
-  if (def.buildAge !== undefined && def.buildAge > p.age) return { ok: false, visible: true, reason: `Available in the ${AGE_NAMES[def.buildAge]}` };
+  // a realm that has lost every Town Center may raise a new one in any age (else it could never recover)
+  const rebuild = type === 'townCenter' && game.countBuildings(p.id, 'townCenter', false) === 0;
+  if (def.buildAge !== undefined && def.buildAge > p.age && !rebuild) return { ok: false, visible: true, reason: `Available in the ${AGE_NAMES[def.buildAge]}` };
   if (def.requires) {
     for (const r of def.requires) {
       if (game.countBuildings(p.id, r) === 0) return { ok: false, visible: true, reason: `Requires a ${BUILDINGS[r].name}` };
