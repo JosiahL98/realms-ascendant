@@ -268,13 +268,13 @@ function snapshot(root: THREE.Object3D, bgA: string, bgB: string, closeUp: boole
   return c2.toDataURL('image/png');
 }
 
-/** Portrait of a baked unit (villager, scout) in its standing pose. */
+/** Portrait of a baked unit (villager, soldier, horseman, animal) in its standing pose. */
 function bakedUnitIcon(rig: BakedRig, color: number): string {
   const pose = new Float32Array(rig.bones.length * BAKED_STRIDE);
   restPose(pose, rig.bones.length);
   const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
   const villager = kind !== 'scout';
-  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : ['horse:stand', 'rider:hold']) {
+  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : kind === 'animal' ? ['stand'] : ['horse:stand', 'rider:hold']) {
     const clip = rig.clips.get(name);
     if (clip) sampleClip(clip, 0, pose);
   }

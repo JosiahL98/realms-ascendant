@@ -42,7 +42,7 @@ export interface BakedRig {
   parts: BakedPart[];
   clips: Map<string, BakedClip>;
   meta: {
-    kind?: 'villager' | 'scout' | 'soldier';
+    kind?: 'villager' | 'scout' | 'soldier' | 'animal';
     walkSpeed?: number;
     attackHit: number;
     gaits?: Record<string, { speed: number }>;

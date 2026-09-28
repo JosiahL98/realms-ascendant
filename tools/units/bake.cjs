@@ -10,6 +10,7 @@ const path = require('path');
 const { makeHumanPose } = require('../review/human-pose.cjs');
 const { GAITS, makeHorseGait } = require('../review/horse-gait.cjs');
 const { makeRiderPose } = require('../review/rider-pose.cjs');
+const { makeAnimalPose } = require('../review/animal-pose.cjs');
 
 const [inDir, outDir, only] = process.argv.slice(2);
 const { dieOptions } = require('../review/lowest.cjs');
@@ -358,6 +359,78 @@ function lowestPoint(model, pose, onlyBones) {
   return low;
 }
 
+// ------------------------------------------------------------------------------------------------ animals
+const ANIMAL_LOOK = {
+  sheep: { coat: 0x2e2824, wool: 0xe6e0cc, points: 0x241e1a },
+  deer: { coat: 0x8e5a2e, belly: 0xd8c4a0, rump: 0xf0e8d8, points: 0x2a2018, nose: 0x141210, horn: 0xb8a078 },
+  boar: { coat: 0x4a3c32, points: 0x2a2018, belly: 0x5e4c3e, nose: 0x7a5a4c, horn: 0xf0e8d0, bristle: 0x201814 },
+  wolf: { coat: 0x7a7268, belly: 0xd8d2c6, saddle: 0x2e2a26, points: 0x8a7a62, nose: 0x141210 },
+};
+const HOOFC = 0x1e1a16;
+
+function animalColor(look) {
+  return (p, i) => {
+    const m = p.masks || {};
+    if (p.mat === 'eye') return lin(EYE);
+    if (p.mat === 'horn') return lin(look.horn);
+    if (p.mat === 'bristle') return lin(look.bristle);
+    const c = lin(look.coat);
+    for (const k of ['belly', 'rump', 'saddle', 'points', 'wool', 'nose']) if (m[k] && look[k] !== undefined) mix(c, look[k], m[k][i]);
+    if (m.hoof) mix(c, HOOFC, m.hoof[i]);
+    return c;
+  };
+}
+
+function bakeAnimal(file, id) {
+  const model = load(file);
+  const P = makeAnimalPose(model.bones, id);
+  const names = model.bones.map((b) => b.name);
+  const conv = (raw) => Object.fromEntries(Object.entries(raw).map(([k, e]) => [k, {
+    q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, 0, e.rz || 0)).toArray(), p: [0, e.py || 0, e.pz || 0],
+  }]));
+  const clips = {};
+  clips.stand = bakeClip(model.bones, names, seamless((t) => conv(P.stand(t)), 14), 14, 8, true);
+  for (const [g, G] of Object.entries(P.gaits)) clips[g] = bakeClip(model.bones, names, (t) => conv(P.gait.pose(G, t)), 1 / G.freq, 30, true);
+  if (id === 'boar' || id === 'wolf') clips.attack = bakeClip(model.bones, ['body', 'neck'], (t) => conv(P.attack(t)), P.ATTACK, 30, false);
+  clips.die = bakeClip(model.bones, names, animalDeath(model, P), 1.2, 30, false);
+  const meta = {
+    kind: 'animal',
+    gaits: Object.fromEntries(Object.entries(P.gaits).map(([g, G]) => [g, { speed: G.speed }])),
+    attackHit: P.ATTACK * 0.55,
+    bend: BEND,
+  };
+  const top = Math.max(...model.bones.map((b) => b.pivot[1]));
+  return { id, height: Math.max(0.45, top + 0.15), bones: model.bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, animalColor(ANIMAL_LOOK[id])), clips, meta };
+}
+
+/** An animal's death: the legs give, and it rolls onto its right side, resting on the ground (height measured). */
+function animalDeath(model, P) {
+  const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const qx = (a) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(1, 0, 0), a);
+  const qz = (a) => new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 0, 1), a);
+  const LX = model.bones.find((b) => b.name === 'legFR').pivot[0];
+  const pivot = new THREE.Vector3(LX, 0, 0);
+  const at = (t, lift) => {
+    const u = t / 1.2;
+    const buckle = ss(0, 0.35, u);
+    const fall = Math.min(1, Math.max(0, (u - 0.1) / 0.55)) ** 2;
+    const out = {};
+    const R = qz(Math.PI / 2 * 0.95 * fall);
+    const p = pivot.clone().sub(pivot.clone().applyQuaternion(R)).add(new THREE.Vector3(0, lift * fall - 0.05 * buckle * (1 - fall), 0));
+    out.root = { q: R.toArray(), p: p.toArray() };
+    for (const k of ['FL', 'FR', 'BL', 'BR']) {
+      out['leg' + k] = { q: qx((k[0] === 'F' ? -0.3 : 0.3) * buckle).toArray(), p: [0, 0, 0] };
+      out['leg' + k + '2'] = { q: qx((k[0] === 'F' ? 0.7 : -0.6) * buckle).toArray(), p: [0, 0, 0] };
+    }
+    out.neck = { q: qx(0.25 * buckle - 0.35 * fall).toArray(), p: [0, 0, 0] };
+    return out;
+  };
+  const low = lowestPoint(model, at(1.2, 0), model.bones.map((b) => b.name));
+  const lift = -low + 0.003;
+  return (t) => at(t, lift);
+}
+
 // ------------------------------------------------------------------------------------------------ soldiers
 const SKINS = [0xe0b48c, 0xc89066, 0xa8704a, 0x7a4a2e, 0x5a3420];
 const SOLDIER_KIT = {
@@ -441,6 +514,8 @@ for (const f of fs.readdirSync(inDir)) {
   if (m) jobs.push([m[1], () => bakeSoldier(m[1])]);
   const c = f.match(/^cav_(\w+)\.json$/);
   if (c) jobs.push([c[1], () => bakeRider(f, c[1])]);
+  const a = f.match(/^animal_(\w+)\.json$/);
+  if (a) jobs.push([a[1], () => bakeAnimal(f, a[1])]);
 }
 fs.writeFileSync(path.join(outDir, 'index.json'), JSON.stringify(jobs.map(([id]) => id)));
 for (const [id, make] of jobs) {

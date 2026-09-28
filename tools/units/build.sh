@@ -20,6 +20,9 @@ for u in $(kits RIDER_KITS); do
   while [ "$(jobs -r | wc -l)" -ge 6 ]; do sleep 1; done
 done
 wait
+# animals (tools/blender/quadruped.py)
+for a in sheep deer boar wolf; do run tools/blender/quadruped.py -- $a "$OUT/animal_$a.json" --tris 0.38 & done
+wait
 # foot soldiers, archers and the priest: the villager's body with each unit's kit (tools/blender/equipment.py)
 for u in $(kits KITS); do
   run tools/blender/human.py -- male "$OUT/kit_$u.json" kit=$u --tris 0.38 &

@@ -205,6 +205,7 @@ function clip(rig: BakedRig, name: string): BakedClip | undefined {
 function pickClips(rig: BakedRig, st: AnimState, carry: string | null, relic: boolean): Layer[] {
   const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
   if (kind === 'scout') return scoutClips(rig, st);
+  if (kind === 'animal') return animalClips(rig, st);
   if (kind === 'soldier') return soldierClips(rig, st, relic);
   return villagerClips(rig, st, carry);
 }
@@ -255,6 +256,33 @@ function villagerClips(rig: BakedRig, st: AnimState, carry: string | null): Laye
   if (carry) push(walking ? 'carryWalk' : 'carryIdle', walking ? walkT : idleT);
   else if (tool) push((walking ? 'walk:' : 'idle:') + tool, walking ? walkT : idleT);
   else push(walking ? 'walk' : 'idle', walking ? walkT : idleT);
+  return out;
+}
+
+/** Animals: a gait picked by speed (the one whose own speed is nearest), standing (grazing), a bite, a fall. */
+function animalClips(rig: BakedRig, st: AnimState): Layer[] {
+  const out: Layer[] = [];
+  const push = (name: string, t: number) => {
+    const c = clip(rig, name);
+    if (c) out.push([c, t]);
+  };
+  if (st.anim === 'die') {
+    push('die', st.t);
+    return out;
+  }
+  const gaits = rig.meta.gaits ?? {};
+  if (st.moving && st.speed > 0.01) {
+    let best = '', err = Infinity;
+    for (const [g, v] of Object.entries(gaits)) {
+      const e = Math.abs(Math.log(st.speed / v.speed));
+      if (e < err) { err = e; best = g; }
+    }
+    // timed by distance: the feet stay planted whatever the speed
+    if (best) push(best, st.time * (st.speed / gaits[best].speed) + st.seed);
+  } else {
+    push('stand', st.time + st.seed * 11);
+  }
+  if (st.anim === 'attack') push('attack', st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay)));
   return out;
 }
 
