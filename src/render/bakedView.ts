@@ -297,8 +297,15 @@ function scoutClips(rig: BakedRig, st: AnimState): Layer[] {
     return out;
   }
   const gaits = rig.meta.gaits ?? {};
+  // the gait whose own speed is nearest the unit's (a horse trots from about 0.9 and canters from about 1.45)
   let gait: string | null = null;
-  if (st.moving) gait = st.speed >= 1.4 ? 'canter' : st.speed >= 0.9 ? 'trot' : 'walk';
+  if (st.moving && st.speed > 0.01) {
+    let err = Infinity;
+    for (const [g, v] of Object.entries(gaits)) {
+      const e = Math.abs(Math.log(st.speed / v.speed));
+      if (e < err) { err = e; gait = g; }
+    }
+  }
   if (gait && gaits[gait]) {
     // timed by distance: the hooves stay planted whatever the unit's speed
     const t = st.time * (st.speed / gaits[gait].speed) + st.seed;
@@ -308,6 +315,10 @@ function scoutClips(rig: BakedRig, st: AnimState): Layer[] {
     push('horse:stand', st.time + st.seed * 11);
     if (st.anim !== 'attack') push('rider:hold', st.time + st.seed * 5);
   }
-  if (st.anim === 'attack') push('rider:attack', st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay)));
+  if (st.anim === 'attack') {
+    const t = st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay));
+    push('mount:attack', t);   // an elephant gores and stamps as its driver thrusts
+    push('rider:attack', t);
+  }
   return out;
 }

@@ -119,14 +119,18 @@ for (const [a, bs] of PAIRS) for (const b of bs) {
   if (n && (weaponParts.includes(a) || (KIT.shield || []).includes(a)) && !/^hand/.test(b)) console.log(`   at rest ${a} inside ${b}: ${n}`);
   if (n && weaponParts.includes(a) && /^hand/.test(b) && b !== holding) console.log(`   at rest ${a} inside ${b}: ${n}`);
 }
-const gait = makeHorseGait(HORSE.bones);
-const euler = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, 0, e.rz || 0)).toArray(), p: [0, e.py || 0, 0] });
+const MOUNT = KIT.mount || 'horse';
+const AP = MOUNT === 'horse' ? null : require('./animal-pose.cjs').makeAnimalPose(HORSE.bones, MOUNT);
+const gait = AP ? { ...AP.gait, stand: AP.stand } : makeHorseGait(HORSE.bones);
+const MOUNT_GAITS = AP ? AP.gaits : GAITS;
+const euler = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, e.ry || 0, e.rz || 0)).toArray(), p: [0, e.py || 0, e.pz || 0] });
 const horsePose = (raw) => Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, euler(v)]));
 const rp = makeRiderPose(THREE, RIDER.bones, {}, KIT);
 
 function evaluate(clip) {
   const [act, g] = clip.split(':');
-  const G = g && g !== 'stand' ? GAITS[g] : null;
+  const G = g && g !== 'stand' ? MOUNT_GAITS[g] : null;
+  if (g && g !== 'stand' && !G) return null;
   const T = act === 'attack' ? ATTACK_PERIOD : G ? 1 / G.freq : 8;
   const r = { miss: 0, pen: {}, worst: {} };
   for (let f = 0; f < FRAMES; f++) {
@@ -160,6 +164,7 @@ let bad = 0;
 for (const c of CLIPS) {
   if (ONLY && c !== ONLY) continue;
   const r = evaluate(c);
+  if (!r) continue;
   const pen = Object.entries(r.pen).map(([k, n]) => `${k}:${n}@${Math.round(r.worst[k] * 100)}%`).join(' ');
   const ok = !r.miss && !pen;
   if (!ok) bad++;

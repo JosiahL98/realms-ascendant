@@ -41,6 +41,8 @@ const COATS = {
   black: { coat: 0x2a2320, points: 0x1c1816, hair: 0x141110 },
   grey: { coat: 0xc4c0b8, points: 0x6a6660, hair: 0xd4d0c8, dapple: 0x9a968e },
   chestnut: { coat: 0xa0582a, points: 0x8a4a22, hair: 0x7a3e1c, white: 0xece6da },
+  camel: { coat: 0xc09a62, points: 0x9a7446, hair: 0x8a6a40, belly: 0xd8bc8e, hoof: 0x3a3026 },
+  elephant: { coat: 0x86817c, points: 0x625e5a, hair: 0x4a4644, hoof: 0xd8d0c0, inner: 0x9a7a74, horn: 0xf0e8d6 },
 };
 const HOOF = 0x2e2a26, HORN = 0x2a2420, NOSTRIL = 0x140f0c, EYE = 0x0c0907;
 
@@ -64,17 +66,20 @@ function riderColor(coat = BAY, look = {}) {
   return (p, i) => {
     const m = p.masks || {};
     if (p.mat === 'team') return new THREE.Color(1, 1, 1);
-    const horsePart = p.mat === 'coat' || ((p.mat === 'hair' || p.mat === 'eye') && !p.bone.startsWith('r'));
+    const horsePart = p.mat === 'coat' || (['hair', 'eye', 'horn'].includes(p.mat) && !p.bone.startsWith('r'));
     if (horsePart) {
+      if (p.mat === 'horn') return lin(coat.horn ?? 0xf0e8d6);
       const c = lin(p.mat === 'hair' ? coat.hair : p.mat === 'eye' ? EYE : coat.coat);
       if (p.mat === 'coat') {
         if (m.dapple && coat.dapple) mix(c, coat.dapple, m.dapple[i] * 0.6);
+        if (m.belly && coat.belly) mix(c, coat.belly, m.belly[i]);
+        if (m.inner && coat.inner) mix(c, coat.inner, m.inner[i] * 0.5);
         if (m.points) mix(c, coat.points, m.points[i]);
         if (coat.white) {
           if (m.blaze) mix(c, coat.white, m.blaze[i]);
           if (m.sock) mix(c, coat.white, m.sock[i]);
         }
-        if (m.hoof) mix(c, HOOF, m.hoof[i]);
+        if (m.hoof) mix(c, coat.hoof ?? HOOF, m.hoof[i]);
         if (m.horn) mix(c, HORN, m.horn[i] * 0.9);
         if (m.nostril) mix(c, NOSTRIL, m.nostril[i] * 0.85);
       }
@@ -91,6 +96,8 @@ function riderColor(coat = BAY, look = {}) {
 const RIDER_LOOK = {
   horseArcher: { skin: 0xc89066, helm: 0xa83a24 }, eliteHorseArcher: { skin: 0xc89066, helm: 0xd4a93a },
   paladin: { helm: 0xd4a93a },
+  camel: { skin: 0xa8704a }, heavyCamel: { skin: 0xa8704a },
+  warElephant: { skin: 0x7a4a2e }, eliteWarElephant: { skin: 0x7a4a2e },
 };
 
 // ------------------------------------------------------------------------------------------------ parts
@@ -268,9 +275,10 @@ function bakeVillager(file, id) {
 
 // ------------------------------------------------------------------------------------------------ horsemen (horse + rider)
 function bakeRider(file, id) {
-  const horse = load('horse_light.json');
   const rider = load(file);
   const kit = rider.kit || { name: id, weapon: 'spear', coat: 'bay' };
+  const mount = kit.mount || 'horse';
+  const horse = load(mount === 'horse' ? 'horse_light.json' : `mount_${mount}_light.json`);
   // one skeleton: the horse's bones, then the rider's (which hang off the horse's body)
   const bones = [...horse.bones];
   for (const b of rider.bones) if (!bones.some((o) => o.name === b.name)) bones.push(b);
@@ -278,28 +286,36 @@ function bakeRider(file, id) {
   const names = bones.map((b) => b.name);
   const horseBones = horse.bones.map((b) => b.name);
   const riderBones = rider.bones.map((b) => b.name).filter((n) => !horseBones.includes(n));
-  const gait = makeHorseGait(horse.bones);
+  // a horse's own gaits (horse-gait.cjs), or a camel's or elephant's (animal-pose.cjs)
+  const AP = mount === 'horse' ? null : makeAnimalPose(horse.bones, mount);
+  const gait = AP ? { ...AP.gait, stand: AP.stand } : makeHorseGait(horse.bones);
+  const gaits = AP ? AP.gaits : GAITS;
   const rp = makeRiderPose(THREE, rider.bones, {}, rider.kit || null);
-  const euler = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, 0, e.rz || 0)).toArray(), p: [0, e.py || 0, 0] });
+  const euler = (e) => ({ q: new THREE.Quaternion().setFromEuler(new THREE.Euler(e.rx || 0, e.ry || 0, e.rz || 0)).toArray(), p: [0, e.py || 0, e.pz || 0] });
   const horsePose = (raw) => Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, euler(v)]));
   const clips = {};
-  clips['horse:stand'] = bakeClip(bones, horseBones, (t) => horsePose(gait.stand(t)), 4 * Math.PI, 8, true);
-  for (const g of ['walk', 'trot', 'canter']) {
-    const G = GAITS[g];
+  clips['horse:stand'] = AP ? bakeClip(bones, horseBones, seamless((t) => horsePose(AP.stand(t)), 14), 14, 8, true)
+    : bakeClip(bones, horseBones, (t) => horsePose(gait.stand(t)), 4 * Math.PI, 8, true);
+  for (const [g, G] of Object.entries(gaits)) {
     clips['horse:' + g] = bakeClip(bones, horseBones, (t) => horsePose(gait.pose(G, t)), 1 / G.freq, 30, true);
     clips['rider:hold:' + g] = bakeClip(bones, riderBones, (t) => rp.pose('hold', t, G), 1 / G.freq, 30, true);
+  }
+  // the elephant fights too: it gores and stamps while its driver thrusts
+  if (mount === 'elephant') {
+    const names0 = Object.keys(AP.attack(0.5));
+    clips['mount:attack'] = bakeClip(bones, names0, (t) => horsePose(AP.attack(t * AP.ATTACK / rp.ATTACK_PERIOD)), rp.ATTACK_PERIOD, 30, false);
   }
   clips['rider:hold'] = bakeClip(bones, riderBones, seamless((t) => rp.pose('hold', t, null), 14), 14, 6, true);
   clips['rider:attack'] = bakeClip(bones, riderBones, (t) => rp.pose('attack', t, null), rp.ATTACK_PERIOD, 30, false);
   clips.die = bakeClip(bones, names, scoutDeath(model, gait, rp, horseBones), 1.6, 30, false);
   const meta = {
     kind: 'scout',
-    gaits: Object.fromEntries(['walk', 'trot', 'canter'].map((g) => [g, { speed: GAITS[g].speed }])),
+    gaits: Object.fromEntries(Object.entries(gaits).map(([g, G]) => [g, { speed: G.speed }])),
     // the thrust (cut, loose) lands half-way through the rider's attack
     attackHit: rp.ATTACK_PERIOD * 0.5,
     bend: BEND,
   };
-  return { id, height: 1.7, bones: bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+  return { id, height: mount === 'elephant' ? 2.3 : mount === 'camel' ? 2.0 : 1.7, bones: bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
     parts: mergeParts(model, riderColor(COATS[kit.coat] || BAY, RIDER_LOOK[id] || {})), clips, meta };
 }
 

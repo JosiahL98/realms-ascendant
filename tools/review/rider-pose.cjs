@@ -22,6 +22,10 @@ function makeRiderPose(THREE, bones, tune = {}, kit = null) {
   const RIGHT = { S, E0, W0 };
   const LEFT = { S: piv.rarmL, E0: piv.relbowL, W0: piv.rhandL };
   const T = piv.rtorso;
+  // key positions below are for a rider on the horse (torso pivot at 0.93 above the ground); on a camel or an
+  // elephant the rider sits elsewhere, and they move with him
+  const OFF = piv.rtorso.clone().sub(new THREE.Vector3(0, 0.93, -0.045));
+  const P = (a) => (a.isVector3 ? a.clone() : V(a).add(OFF));
   const LEFT_POLE = V(kit && kit.poles ? kit.poles.L : [1, -0.12, -0.25]);   // the left elbow_ik pole in rider.py
   const D_REST = new THREE.Vector3(0.03, 1.0, -0.12).normalize();   // spear (sword) direction as modelled
   const ident = new THREE.Quaternion();
@@ -41,10 +45,10 @@ function makeRiderPose(THREE, bones, tune = {}, kit = null) {
     // natural: down and a little out, drifting back on the draw and forward on the thrust. Directions are set in the
     // horse's frame (straight ahead, turned very slightly towards the centre) and turned into the torso's frame for
     // each key's body twist.
-    const lvl = (g, pole, twist, flex) => ({ g: V(g), d: inTorso(LEVEL_DIR, twist), pole: V(pole), twist, flex });
+    const lvl = (g, pole, twist, flex) => ({ g: P(g), d: inTorso(LEVEL_DIR, twist), pole: V(pole), twist, flex });
     // halfway down the point is at 45 degrees, with the elbow well out so the butt swings past inside it
     const LOWER = {
-      g: V(tune.lowerG || [-0.29, 0.95, 0.14]), d: inTorso(V([LEVEL_DIR.x, 1, 1]).normalize(), -0.04),
+      g: P(tune.lowerG || [-0.29, 0.95, 0.14]), d: inTorso(V([LEVEL_DIR.x, 1, 1]).normalize(), -0.04),
       pole: V(tune.lowerPole || [-1.039, -0.172, 0.077]), twist: -0.04, flex: tune.lowerFlex ?? 0.3,
     };
     const LEVEL = lvl(tune.levelG || [-0.207, 0.878, 0.07], tune.levelPole || [-1, -0.7, -0.3], -0.06, tune.levelFlex ?? 0.5);
@@ -56,7 +60,7 @@ function makeRiderPose(THREE, bones, tune = {}, kit = null) {
     // A cut on the right side: the sword goes up and back over the right shoulder as the shoulders turn away, then
     // comes down and forward past the horse's shoulder, the body turning into the blow, and follows through low
     // and outward before coming back up to the hold.
-    const key = (g, d, pole, twist, flex = 0) => ({ g: V(g), d: V(d).normalize(), pole: V(pole), twist, flex });
+    const key = (g, d, pole, twist, flex = 0) => ({ g: P(g), d: V(d).normalize(), pole: V(pole), twist, flex });
     const RAISE = key(tune.raiseG || [-0.22, 1.3, -0.04], [-0.25, 0.6, -0.8], [-1, 0.2, -0.6], -0.22);
     const HIGH = key(tune.highG || [-0.3, 1.25, 0.05], [-0.4, 0.9, 0.15], [-1, 0.0, -0.4], -0.05);
     // at the end of the cut the wrist is bent, so the blade stands off the line of the forearm
@@ -151,12 +155,12 @@ function makeRiderPose(THREE, bones, tune = {}, kit = null) {
     };
     const q0inv = frame(U0, B0).invert();
     const bowQ = (u, b) => frame(u, b).multiply(q0inv);   // rest -> this orientation
-    const key = (g, u, a, draw, twist, poleL, poleR) => ({ g: V(g), u: V(u).normalize(), a: V(a), draw, twist, poleL: V(poleL), poleR: V(poleR) });
+    const key = (g, u, a, draw, twist, poleL, poleR) => ({ g: P(g), u: V(u).normalize(), a: P(a), draw, twist, poleL: V(poleL), poleR: V(poleR) });
     const REST = { g: G0.clone(), u: U0.clone(), a: FR.clone(), draw: 0, twist: 0, poleL: V(kit.poles.L), poleR: V(kit.poles.R) };
-    const RG = V(tune.raiseG || [0.11, 1.13, 0.28]);
+    const RG = P(tune.raiseG || [0.11, 1.13, 0.28]);
     const RU = V([-0.2, 1, 0.1]).normalize();
-    const ANCHOR = V(tune.anchor || [-0.1, 1.2, 0.02]);
-    const FG = V(tune.fullG || [0.1, 1.19, 0.27]);
+    const ANCHOR = P(tune.anchor || [-0.1, 1.2, 0.02]);
+    const FG = P(tune.fullG || [0.1, 1.19, 0.27]);
     const FU = V([-0.25, 1, 0.05]).normalize();
     // at the raise the right hand is on the string, where it rests
     const stringAt = (g, u) => {

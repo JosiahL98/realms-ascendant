@@ -46,8 +46,25 @@ mk.reset_scene()
 ss = mk.smoothstep
 V = Vector
 
+MOUNT = KIT['mount']   # horse (horse.py), or camel / elephant (quadruped.py)
 horse_obj, horse = mk.object_from_export(horse_path, part_names=['body'], name='horse')
-hair_obj = mk.object_from_export(horse_path, part_names=['mane', 'tail'], name='horsehair')[0]
+EXTRA = {'horse': ['mane', 'tail'], 'camel': ['eyes'], 'elephant': ['trunk', 'trunk2', 'earL', 'earR', 'horn']}[MOUNT]
+hair_obj = mk.object_from_export(horse_path, part_names=EXTRA, name='horsehair')[0]
+MOUNT_META = horse.get('meta', {})
+# Everything below is built for a rider on the horse. Another mount is moved so that its seat (the top of the camel's
+# hump, the elephant's neck) lies where the horse's does, the rider and tack are built there, and at the end all of it
+# is moved back (SHIFT).
+HORSE_SEAT = V((0, 0.843, -0.04))
+SHIFT = V((0, 0, 0))
+if MOUNT != 'horse':
+    seat_z = {'camel': -0.06, 'elephant': 0.3}[MOUNT]
+    top_ = mk.Surface(horse_obj).cast((0, 3.0, seat_z), (0, -1, 0))[0]
+    SHIFT = HORSE_SEAT - V((0, top_.y + 0.03, seat_z))
+    for o in (horse_obj, hair_obj):
+        for v in o.data.vertices:
+            v.co = v.co + mk.g2b(tuple(SHIFT))
+        o.data.update()
+    print(f'MOUNT {MOUNT}: shifted by ({SHIFT.x:.3f}, {SHIFT.y:.3f}, {SHIFT.z:.3f})')
 S = mk.Surface(horse_obj)                  # what tack is laid onto
 CLEAR = mk.Surface(horse_obj, hair_obj)    # what tack and rider must stay out of
 
@@ -76,6 +93,7 @@ def elbow_ik(sh, wr, pole):
 
 
 SEAT_Y = S.cast((0, 2.0, -0.04), (0, -1, 0))[0].y + 0.03    # top of the saddle seat (see saddle below)
+print(f'SEAT_Y {SEAT_Y:.4f}')
 # a relaxed hand rests on a front horn of the saddle, palm down, clear of his lap
 PALM = {s: V((0.045 * s, SEAT_Y + 0.062, 0.14)) for s in (1, -1)}
 POLE = {-1: (-0.6, -1, -0.35), 1: (1, -0.12, -0.25)}    # elbow poles (rider-pose.cjs reads them from the export)
@@ -113,13 +131,15 @@ for s, side in ((1, 'L'), (-1, 'R')):
     ]
 
 parts = []
-NECK_PIVOT = V(horse_bones['neck']['pivot'])
+NECK_PIVOT = V(horse_bones['neck']['pivot']) + SHIFT
+NECK_AXIS_YZ = MOUNT_META.get('neckAxis', [0.868, 0.496])
+NECK_RAMP = MOUNT_META.get('neckRamp', [-0.07, 0.17])
 
 
 def neck_weight(p):
-    """Same bend weight as the horse's own neck (see horse.py)."""
-    t = (p[1] - NECK_PIVOT.y) * 0.868 + (p[2] - NECK_PIVOT.z) * 0.496
-    return ss(-0.07, 0.17, t)
+    """Same bend weight as the mount's own neck (see horse.py, quadruped.py)."""
+    t = (p[1] - NECK_PIVOT.y) * NECK_AXIS_YZ[0] + (p[2] - NECK_PIVOT.z) * NECK_AXIS_YZ[1]
+    return ss(NECK_RAMP[0], NECK_RAMP[1], t)
 
 
 # ------------------------------------------------------------------------------------------------ fitting helpers
@@ -247,13 +267,14 @@ def ring(center, axis, up, radius, a0, a1, n, offset):
 # Barding over the horse's body: a housing of cloth (or mail) from the withers to the croup, hanging to just above
 # where the legs start to bend the skin (so the legs swing clear of it). Its front follows the neck like the skin
 # under it.
-cap_z0, cap_z1 = -0.44, 0.24
+cap_z0, cap_z1, CAP_HEM = {'horse': (-0.44, 0.24, 0.575), 'camel': (-0.28, 0.18, 0.6),
+                           'elephant': (-0.5 + SHIFT.z, 0.1 + SHIFT.z, 0.8 + SHIFT.y)}[MOUNT]
 
 
 def cap_hem(z):
     t = (z - cap_z0) / (cap_z1 - cap_z0)
     corner = max(ss(0.12, 0.0, t), ss(0.88, 1.0, t))
-    return 0.575 + 0.1 * corner * corner
+    return CAP_HEM + 0.1 * corner * corner
 
 
 CAPARISON = BARDING != 'none'
@@ -266,13 +287,56 @@ if CAPARISON:
     cap.mesh(*surface_grid(cgrid, cnrm, 0.0 if mail else 0.006))
     cap.mask('neck', lambda p, n: neck_weight(p))
     parts.append(cap.build())
-    ctrim = mk.Part('captrim', 'body', 'gold' if BARDING == 'gold' else 'trim' if not mail else 'darkleather', remesh=False)
+    ctrim = mk.Part('captrim', 'body', 'gold' if BARDING in ('gold', 'howdah') else 'trim' if not mail else 'darkleather', remesh=False)
     for c in (0, len(cgrid[0]) - 1):
         ctrim.ribbon([cgrid[r][c] + V((0, 0.012, 0)) for r in range(rows)], [cnrm[r][c] for r in range(rows)], 0.02, 0.009)
     for r in (0, rows - 1):
         ctrim.ribbon([cgrid[r][c] for c in range(len(cgrid[0]))], cnrm[r], 0.018, 0.009)
     ctrim.mask('neck', lambda p, n: neck_weight(p))
     parts.append(ctrim.build())
+
+# ------------------------------------------------------------------------------------------------ howdah
+def box(part, c, half, frame=None):
+    """A box round centre c with half-sizes along x, y, z."""
+    c = V(c)
+    verts = [tuple(c + V((sx * half[0], sy * half[1], sz * half[2]))) for sx in (-1, 1) for sy in (-1, 1) for sz in (-1, 1)]
+    faces = [(0, 1, 3, 2), (4, 6, 7, 5), (0, 4, 5, 1), (2, 3, 7, 6), (0, 2, 6, 4), (1, 5, 7, 3)]
+    part.mesh(verts, faces)
+
+
+if BARDING == 'howdah':
+    # a fighting tower on the elephant's back: a railed wooden platform on the caparison, corner posts, a canopy in
+    # the player's colour and round shields hung along its sides
+    hz = -0.12 + SHIFT.z                       # centre of the platform along the back
+    back_y = top_y(0, hz)
+    fy = back_y + 0.05                         # floor
+    HW, HD = 0.25, 0.27                        # half width, half depth
+    wood = mk.Part('howdah', 'body', 'wood', remesh=False)
+    box(wood, (0, fy, hz), (HW, 0.02, HD))                                             # floor
+    for sx in (-1, 1):
+        box(wood, (sx * (HW - 0.012), fy + 0.08, hz), (0.012, 0.06, HD))              # side walls
+    for sz in (-1, 1):
+        box(wood, (0, fy + 0.08, hz + sz * (HD - 0.012)), (HW, 0.06, 0.012))           # front and back walls
+    for sx in (-1, 1):
+        for sz in (-1, 1):
+            box(wood, (sx * (HW - 0.015), fy + 0.2, hz + sz * (HD - 0.015)), (0.012, 0.2, 0.012))   # posts
+    # the platform's underside rests on the back: fill the gap down to the cloth with a cushion
+    parts.append(wood.build())
+    cushion = mk.Part('cushion', 'body', 'team', voxel=0.004, smooth=4, tris=200)
+    cushion.ellipsoid((0, fy - 0.04, hz), (HW * 0.95, 0.06, HD * 0.95))
+    parts.append(cushion.build())
+    roof = mk.Part('canopy', 'body', 'team', remesh=False)
+    ry = fy + 0.4
+    verts = [(-HW - 0.02, ry, hz - HD - 0.02), (HW + 0.02, ry, hz - HD - 0.02), (HW + 0.02, ry, hz + HD + 0.02),
+             (-HW - 0.02, ry, hz + HD + 0.02), (0, ry + 0.09, hz)]
+    roof.mesh(verts, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4), (0, 3, 2, 1)])
+    parts.append(roof.build())
+    shields = mk.Part('howdahshields', 'body', 'bronze', voxel=0.0025, smooth=2, tris=240)
+    for sx in (-1, 1):
+        for k in (-1, 1):
+            c = V((sx * (HW + 0.01), fy + 0.09, hz + k * 0.12))
+            shields.limb(c, c + V((sx * 0.012, 0, 0)), 0.065, 0.065, seg=20, flat=1.0)
+    parts.append(shields.build())
 
 # ------------------------------------------------------------------------------------------------ saddle cloth
 cloth_z0, cloth_z1 = -0.2, 0.11
@@ -285,7 +349,7 @@ def cloth_hem(z):
     return 0.6 + 0.09 * corner * corner
 
 
-SADDLE_CLOTH = BARDING in ('none', 'mail', 'plate')   # a cloth caparison is its own saddle cloth
+SADDLE_CLOTH = BARDING in ('none', 'mail', 'plate')   # a cloth caparison is its own saddle cloth (the howdah's too)
 if SADDLE_CLOTH:
     rows = n_samples(11)
     grid, nrm = draped(cloth_z0, cloth_z1, rows, cloth_hem, 0.007 if not CAPARISON else 0.015, n_top=n_samples(4), n_side=n_samples(8))
@@ -309,19 +373,26 @@ srows = 9
 sgrid, snrm = draped(-0.15, 0.025, srows, lambda z: 0.755, 0.012, top_half=0.06, n_top=5, n_side=5)   # flaps end behind the thighs
 saddle.mesh(*shell(sgrid, snrm, 0.018))
 seat_top = top_y(0, -0.04) + 0.03
-saddle.ellipsoid((0, seat_top + 0.01, 0.062), (0.045, 0.02, 0.028))         # pommel, narrow enough to sit between the thighs
-saddle.ellipsoid((0, seat_top + 0.018, -0.14), (0.075, 0.028, 0.028))       # cantle
-for s in (1, -1):
-    # front horns curl out over the thighs, rear horns rise behind the rider
-    saddle.limb((0.032 * s, seat_top + 0.014, 0.1), (0.05 * s, seat_top + 0.05, 0.165), 0.014, 0.01, seg=12)
-    saddle.limb((0.045 * s, seat_top + 0.01, -0.125), (0.065 * s, seat_top + 0.06, -0.155), 0.016, 0.01, seg=12)
+PAD = MOUNT == 'elephant'   # the driver sits on a folded blanket on the elephant's neck, no saddle frame
+if not PAD:
+    saddle.ellipsoid((0, seat_top + 0.01, 0.062), (0.045, 0.02, 0.028))         # pommel, narrow enough to sit between the thighs
+    saddle.ellipsoid((0, seat_top + 0.018, -0.14), (0.075, 0.028, 0.028))       # cantle
+    for s in (1, -1):
+        # front horns curl out over the thighs, rear horns rise behind the rider
+        saddle.limb((0.032 * s, seat_top + 0.014, 0.1), (0.05 * s, seat_top + 0.05, 0.165), 0.014, 0.01, seg=12)
+        saddle.limb((0.045 * s, seat_top + 0.01, -0.125), (0.065 * s, seat_top + 0.06, -0.155), 0.016, 0.01, seg=12)
+else:
+    # the relaxed hand rests on a knot of the pad's front rope
+    for s in (1, -1):
+        saddle.ball((0.045 * s, seat_top + 0.02, 0.135), 0.022)
 parts.append(saddle.build())
 
-bronze = mk.Part('saddlebronze', 'body', 'bronze', voxel=0.0025, smooth=2, tris=120)
-for s in (1, -1):
-    bronze.ball((0.05 * s, seat_top + 0.05, 0.165), 0.011)
-    bronze.ball((0.065 * s, seat_top + 0.06, -0.155), 0.011)
-parts.append(bronze.build())
+if not PAD:
+    bronze = mk.Part('saddlebronze', 'body', 'bronze', voxel=0.0025, smooth=2, tris=120)
+    for s in (1, -1):
+        bronze.ball((0.05 * s, seat_top + 0.05, 0.165), 0.011)
+        bronze.ball((0.065 * s, seat_top + 0.06, -0.155), 0.011)
+    parts.append(bronze.build())
 
 # ------------------------------------------------------------------------------------------------ straps
 STRAP_STEP = 0.008   # dense sampling along straps before thinning; short enough that no stretch sinks in
@@ -406,79 +477,101 @@ def thin(pts, nrm, gap, closed, max_len=0.07 if not LIGHT else 0.09, max_turn=0.
 
 straps = mk.Part('straps', 'body', 'darkleather', remesh=False)
 # girth: under the belly behind the elbows, from cloth edge to cloth edge
-gp, _ = ring((0, 0.63, 0.07), (0, 0, 1), (0, 1, 0), 0.6, 50, 310, 40, 0.0)   # under the cloth, ends hidden by it
-straps.ribbon(*settle(gp, 0.003), 0.034, 0.006, top_only=LIGHT)
-# breast collar round the front of the chest, from the saddle's front corners
+if MOUNT != 'elephant':
+    gy = 0.63 if MOUNT == 'horse' else 0.6
+    gp, _ = ring((0, gy, 0.07), (0, 0, 1), (0, 1, 0), 0.6, 50, 310, 40, 0.0)   # under the cloth, ends hidden by it
+    straps.ribbon(*settle(gp, 0.003), 0.034, 0.006, top_only=LIGHT)
+# breast collar round the front of the chest, from the saddle's front corners (horses only)
+HORSE_TACK = MOUNT == 'horse'
 bp = []
-for i in range(40):
+for i in range(40 if HORSE_TACK else 0):
     a = math.radians(-80 + 160 * i / 39)
     y = 0.655 + 0.04 * (abs(a) / math.radians(80)) ** 2
     d = V((math.sin(a), 0, math.cos(a)))
     h, n = S.cast(V((0, y, 0.18)) + d * 0.6, -d, 1.2)
     if h is not None:
         bp.append(h)
-# the breast collar runs back along both sides and ends under the saddle cloth
-left, right = (bp[-1], bp[0]) if bp[-1].x > 0 else (bp[0], bp[-1])
-tails = {}
-for end in (left, right):
-    sgn = 1 if end.x > 0 else -1
-    path = []
-    for j in range(1, 13):
-        z = end.z + (0.06 - end.z) * j / 12
-        h, _ = S.cast((sgn * 1.0, end.y, z), (-sgn, 0, 0))
-        if h is not None:
-            path.append(h)
-    tails[sgn] = path
-bp = list(reversed(tails[1] if bp[0].x > 0 else tails[-1])) + bp + (tails[-1] if bp[0].x > 0 else tails[1])
-bp, bn = settle(bp, 0.003)
-straps.ribbon(bp, bn, 0.026, 0.006, top_only=LIGHT)
-# crupper along the spine to the root of the tail
-cp = []
-for i in range(20):
-    z = -0.19 - 0.27 * i / 19
-    h, _ = S.cast((0, 2.0, z), (0, -1, 0))
-    cp.append(h)
-if not CAPARISON:   # under a caparison it would not show
-    straps.ribbon(*settle(cp, 0.003), 0.018, 0.005, top_only=LIGHT)
-parts.append(straps.build())
+if HORSE_TACK:
+    # the breast collar runs back along both sides and ends under the saddle cloth
+    left, right = (bp[-1], bp[0]) if bp[-1].x > 0 else (bp[0], bp[-1])
+    tails = {}
+    for end in (left, right):
+        sgn = 1 if end.x > 0 else -1
+        path = []
+        for j in range(1, 13):
+            z = end.z + (0.06 - end.z) * j / 12
+            h, _ = S.cast((sgn * 1.0, end.y, z), (-sgn, 0, 0))
+            if h is not None:
+                path.append(h)
+        tails[sgn] = path
+    bp = list(reversed(tails[1] if bp[0].x > 0 else tails[-1])) + bp + (tails[-1] if bp[0].x > 0 else tails[1])
+    bp, bn = settle(bp, 0.003)
+    straps.ribbon(bp, bn, 0.026, 0.006, top_only=LIGHT)
+    # crupper along the spine to the root of the tail
+    cp = []
+    for i in range(20):
+        z = -0.19 - 0.27 * i / 19
+        h, _ = S.cast((0, 2.0, z), (0, -1, 0))
+        cp.append(h)
+    if not CAPARISON:   # under a caparison it would not show
+        straps.ribbon(*settle(cp, 0.003), 0.018, 0.005, top_only=LIGHT)
+if MOUNT != 'elephant':
+    parts.append(straps.build())
 
-pendant = mk.Part('pendant', 'body', 'bronze', voxel=0.0022, smooth=2, tris=80)
-fi = min(range(len(bp)), key=lambda i: abs(bp[i].x))
-front, fn = bp[fi], bn[fi]
-pendant.ellipsoid(front + fn * 0.012 + V((0, -0.03, 0)), (0.02, 0.024, 0.006))              # lunula on the breast collar
-pendant.limb(front + fn * 0.008 + V((0, -0.002, 0)), front + fn * 0.012 + V((0, -0.02, 0)), 0.004, 0.004, seg=8)
-parts.append(pendant.build())
+if HORSE_TACK:
+    pendant = mk.Part('pendant', 'body', 'bronze', voxel=0.0022, smooth=2, tris=80)
+    fi = min(range(len(bp)), key=lambda i: abs(bp[i].x))
+    front, fn = bp[fi], bn[fi]
+    pendant.ellipsoid(front + fn * 0.012 + V((0, -0.03, 0)), (0.02, 0.024, 0.006))              # lunula on the breast collar
+    pendant.limb(front + fn * 0.008 + V((0, -0.002, 0)), front + fn * 0.012 + V((0, -0.02, 0)), 0.004, 0.004, seg=8)
+    parts.append(pendant.build())
 
 # ------------------------------------------------------------------------------------------------ bridle and reins
 HEAD_AXIS = V((0, -0.614, 0.789))       # poll towards muzzle
-bridle = mk.Part('bridle', 'body', 'darkleather', remesh=False)
-crown_p, _ = ring((0, 0.985, 0.585), HEAD_AXIS, (0, 0.789, 0.614), 0.4, -118, 118, 36, 0.0)
-crown_p, crown_n = settle(crown_p, 0.0025)
-bridle.ribbon(crown_p, crown_n, 0.014, 0.004, top_only=LIGHT)
-nose_p, _ = ring((0, 0.905, 0.745), HEAD_AXIS, (0, 0.789, 0.614), 0.4, 0, 360, 48, 0.0)
-bridle.ribbon(*settle(nose_p[:-1], 0.0025, closed=True), 0.014, 0.004, closed=True, top_only=LIGHT)
-brow_p = []
-for i in range(15):
-    x = -0.052 + 0.104 * i / 14
-    h, _ = S.cast((x, 1.035, 1.0), (0, 0, -1), 1.0)
-    if h is not None:
-        brow_p.append(h)
-bridle.ribbon(*settle(brow_p, 0.0025), 0.011, 0.004, top_only=LIGHT)
-BIT = {s: V((0.047 * s, 0.868, 0.786)) for s in (1, -1)}
-for s in (1, -1):
-    start = crown_p[0] if (crown_p[0].x > 0) == (s > 0) else crown_p[-1]
-    pts = [start.lerp(BIT[s] + V((0, 0.014, -0.012)), i / 12) for i in range(13)]
-    bridle.ribbon(*settle(pts, 0.0025), 0.012, 0.004, top_only=LIGHT)
-bridle.mask('neck', lambda p, n: neck_weight(p))
-parts.append(bridle.build())
+if HORSE_TACK:
+    bridle = mk.Part('bridle', 'body', 'darkleather', remesh=False)
+    crown_p, _ = ring((0, 0.985, 0.585), HEAD_AXIS, (0, 0.789, 0.614), 0.4, -118, 118, 36, 0.0)
+    crown_p, crown_n = settle(crown_p, 0.0025)
+    bridle.ribbon(crown_p, crown_n, 0.014, 0.004, top_only=LIGHT)
+    nose_p, _ = ring((0, 0.905, 0.745), HEAD_AXIS, (0, 0.789, 0.614), 0.4, 0, 360, 48, 0.0)
+    bridle.ribbon(*settle(nose_p[:-1], 0.0025, closed=True), 0.014, 0.004, closed=True, top_only=LIGHT)
+    brow_p = []
+    for i in range(15):
+        x = -0.052 + 0.104 * i / 14
+        h, _ = S.cast((x, 1.035, 1.0), (0, 0, -1), 1.0)
+        if h is not None:
+            brow_p.append(h)
+    bridle.ribbon(*settle(brow_p, 0.0025), 0.011, 0.004, top_only=LIGHT)
+    BIT = {s: V((0.047 * s, 0.868, 0.786)) for s in (1, -1)}
+    for s in (1, -1):
+        start = crown_p[0] if (crown_p[0].x > 0) == (s > 0) else crown_p[-1]
+        pts = [start.lerp(BIT[s] + V((0, 0.014, -0.012)), i / 12) for i in range(13)]
+        bridle.ribbon(*settle(pts, 0.0025), 0.012, 0.004, top_only=LIGHT)
+    bridle.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(bridle.build())
 
-bits = mk.Part('bits', 'body', 'bronze', remesh=False)
-for s in (1, -1):
-    c = BIT[s]
-    ring_pts = [c + V((0, 0.013 * math.cos(2 * math.pi * i / 8), 0.013 * math.sin(2 * math.pi * i / 8))) for i in range(9)]
-    bits.tube(ring_pts, 0.0035, seg=4)
-bits.mask('neck', lambda p, n: neck_weight(p))
-parts.append(bits.build())
+    bits = mk.Part('bits', 'body', 'bronze', remesh=False)
+    for s in (1, -1):
+        c = BIT[s]
+        ring_pts = [c + V((0, 0.013 * math.cos(2 * math.pi * i / 8), 0.013 * math.sin(2 * math.pi * i / 8))) for i in range(9)]
+        bits.tube(ring_pts, 0.0035, seg=4)
+    bits.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(bits.build())
+elif MOUNT == 'camel':
+    # a halter: a noseband round the muzzle and a headstall behind the ears
+    hd = {k: V(v) + SHIFT for k, v in MOUNT_META['head'].items()}
+    axis = (hd['muzzle'] - hd['poll']).normalized()
+    up = (V((0, 1, 0)) - axis * axis.y).normalized()
+    bridle = mk.Part('bridle', 'body', 'darkleather', remesh=False)
+    nose_p, _ = ring(hd['muzzle'] - axis * 0.035, axis, up, 0.3, 0, 360, 40, 0.0)
+    bridle.ribbon(*settle(nose_p[:-1], 0.0025, closed=True), 0.014, 0.004, closed=True, top_only=LIGHT)
+    crown_p, _ = ring(hd['poll'], axis, up, 0.3, -120, 120, 30, 0.0)
+    bridle.ribbon(*settle(crown_p, 0.0025), 0.013, 0.004, top_only=LIGHT)
+    for c in (0, -1):
+        a_, b_ = crown_p[c], nose_p[0] if (nose_p[0].x > 0) == (crown_p[c].x > 0) else nose_p[len(nose_p) // 2]
+        bridle.ribbon(*settle([a_.lerp(b_, i / 10) for i in range(11)], 0.0025), 0.012, 0.004, top_only=LIGHT)
+    bridle.mask('neck', lambda p, n: neck_weight(p))
+    parts.append(bridle.build())
 
 # ------------------------------------------------------------------------------------------------ plate barding
 # a chamfron down the front of the face and a peytral round the chest, over the bridle and breast collar
@@ -920,6 +1013,8 @@ if 'cape' in by_name:
 AUDIT = [('saddle', 'legs'), ('saddle', 'skirt'), ('legs', 'saddle'), ('skirt', 'saddle'), ('saddlebronze', 'legs'),
          ('saddlebronze', 'skirt')]
 for a_, b_ in AUDIT:
+    if a_ not in by_name or b_ not in by_name:
+        continue
     surf = mk.Surface(by_name[b_])
     n_in = surf.report(by_name[a_])[0]
     print(f'AUDIT {a_:<12} vertices inside {b_:<8}: {n_in}')
@@ -931,12 +1026,24 @@ for a_, b_ in AUDIT:
                 print(f'    ({q[0]:+.3f}, {q[1]:.3f}, {q[2]:+.3f}) depth {-d * 1000:.1f} mm')
 
 # ------------------------------------------------------------------------------------------------ bake and export
+# masks are functions of the built (shifted) positions: evaluate them before moving everything back onto the mount
+MASKS = {o.name: mk.vertex_masks(o) for o in parts}
+if SHIFT.length > 0:
+    for o in parts + [horse_obj, hair_obj]:
+        for v in o.data.vertices:
+            v.co = v.co - mk.g2b(tuple(SHIFT))
+        o.data.update()
+    for b in BONES:
+        if b['name'] not in ('body', 'neck'):
+            b['pivot'] = list(V(b['pivot']) - SHIFT)
+    for side in FIST:
+        FIST[side] = FIST[side] - SHIFT
 horse_occluder = mk.object_from_export(horse_path, part_names=['body'], name='horse_occluder')[0]
 ao = mk.bake_ao(parts, dist=0.22, near=0.035, occluders=[horse_occluder])
-tris = mk.export_model(parts, ao, BONES, out_path)
+tris = mk.export_model(parts, ao, BONES, out_path, masks=MASKS)
 with open(out_path) as f_:
     data_ = json.load(f_)
-data_['kit'] = dict(name=KIT_NAME, weapon=WEAPON, barding=BARDING, coat=KIT['coat'], helmet=KIT['helmet'], elite=KIT['elite'],
+data_['kit'] = dict(name=KIT_NAME, weapon=WEAPON, barding=BARDING, coat=KIT['coat'], helmet=KIT['helmet'], elite=KIT['elite'], mount=MOUNT,
                     held=HELD, shield=SHIELD_PARTS, poles={'L': list(POLE[1]), 'R': list(POLE[-1])},
                     fist={'L': list(FIST[1]), 'R': list(FIST[-1])})
 if WEAPON == 'bow':
@@ -955,7 +1062,7 @@ if preview_path:
     }
     colors = {}
     for o in parts:
-        hm = mk.vertex_masks(o).get('hair')
+        hm = MASKS[o.name].get('hair')
         cols = []
         for i, a in enumerate(ao[o.name]):
             c = PAL.get(o['mat'], (0.5, 0.5, 0.5))
@@ -973,6 +1080,10 @@ if preview_path:
     hme['mat'] = 'coat'
     colors_all[hme.name] = [(0.2, 0.085, 0.03)] * len(hme.data.vertices)
     parts_all.append(hme)
+    if MOUNT != 'horse':   # the trunk, ears and tusks
+        hair_obj['mat'] = 'coat'
+        colors_all[hair_obj.name] = [(0.2, 0.19, 0.18)] * len(hair_obj.data.vertices)
+        parts_all.append(hair_obj)
     if os.environ.get('PREVIEW_ONLY'):   # debugging: render just these parts
         keep = os.environ['PREVIEW_ONLY'].split(',')
         for o in parts_all:

@@ -61,12 +61,17 @@ RIDER_KITS = {
     'heavyCavArcher': dict(weapon='bow', helmet='conical', armor='mail', quiver=True, barding='mail', coat='darkBay'),
     'horseArcher': dict(weapon='bow', helmet='phrygian', quiver=True, barding='cloth', coat='chestnut'),
     'eliteHorseArcher': dict(weapon='bow', helmet='phrygian', armor='mail', quiver=True, elite=True, barding='mail', coat='grey'),
+    # other mounts (quadruped.py): a camel ridden over its hump; an elephant driven from its neck, a howdah on its back
+    'camel': dict(weapon='sword', helmet='turban', barding='cloth', coat='camel', mount='camel'),
+    'heavyCamel': dict(weapon='sword', helmet='conical', armor='mail', barding='mail', coat='camel', mount='camel'),
+    'warElephant': dict(weapon='spear', helmet='cap', barding='howdah', coat='elephant', mount='elephant'),
+    'eliteWarElephant': dict(weapon='spear', helmet='conical', armor='mail', barding='howdah', elite=True, coat='elephant', mount='elephant'),
 }
 
 
 def rider_kit(name):
     k = dict(RIDER_KITS[name])
-    for f, d in (('helmet', 'none'), ('armor', 'none'), ('shield', 'none'), ('barding', 'none'), ('coat', 'bay')):
+    for f, d in (('helmet', 'none'), ('armor', 'none'), ('shield', 'none'), ('barding', 'none'), ('coat', 'bay'), ('mount', 'horse')):
         k.setdefault(f, d)
     for f in ('cape', 'quiver', 'sash', 'bare', 'robe', 'beard', 'elite', 'relic'):
         k.setdefault(f, False)

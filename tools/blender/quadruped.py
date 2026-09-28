@@ -45,6 +45,11 @@ SP = {
                  neck=(0.33, 0.21), neckAxis=(0.25, 0.97), tail=(0.33, -0.33), foot='hoof'),
     'wolf': dict(H=0.44, legY=0.28, kneeF=0.1, kneeB=0.15, fet=0.036, FZ=0.16, BZ=-0.19, LX=0.055,
                  neck=(0.37, 0.2), neckAxis=(0.55, 0.83), tail=(0.36, -0.26), foot='paw'),
+    # mounts: a dromedary (ridden over its hump) and a war elephant (a driver on its neck, a howdah on its back)
+    'camel': dict(H=0.9, legY=0.6, kneeF=0.33, kneeB=0.36, fet=0.075, FZ=0.25, BZ=-0.27, LX=0.085, legR=1.4,
+                  neck=(0.76, 0.3), neckAxis=(0.15, 0.99), neckRamp=(-0.05, 0.14), tail=(0.78, -0.36), foot='pad'),
+    'elephant': dict(H=1.2, legY=0.74, kneeF=0.4, kneeB=0.42, fet=0.1, FZ=0.33, BZ=-0.35, LX=0.16, legR=3.1,
+                     neck=(1.0, 0.38), neckAxis=(0.3, 0.95), neckRamp=(-0.06, 0.1), tail=(0.98, -0.62), foot='pillar'),
 }[SPECIES]
 LEG_Y, FET, FZ, BZ, LX = SP['legY'], SP['fet'], SP['FZ'], SP['BZ'], SP['LX']
 # the lower joints sit a little forward (fore knee) or back (hock) of the upper pivots, as in the horse
@@ -67,9 +72,12 @@ NECK_PIVOT = V((0, SP['neck'][0], SP['neck'][1]))
 NECK_AXIS = V(SP['neckAxis']).normalized()   # (y, z) up the neck
 
 
+NECK_RAMP = SP.get('neckRamp', (-0.03, 0.08))
+
+
 def neck_weight(p):
     t = (p[1] - NECK_PIVOT.y) * NECK_AXIS[0] + (p[2] - NECK_PIVOT.z) * NECK_AXIS[1]
-    return ss(-0.03, 0.08, t)
+    return ss(NECK_RAMP[0], NECK_RAMP[1], t)
 
 
 parts = []
@@ -167,6 +175,72 @@ elif SPECIES == 'boar':
     bristle.mask('neck', lambda p, n: neck_weight(p))
     parts.append(bristle.build())
 
+elif SPECIES == 'camel':
+    # a dromedary: long legs, one hump, a long neck dipping forward and rising to a small head with a drooping lip
+    for c, r in (((0, 0.72, -0.02), (0.13, 0.13, 0.3)), ((0, 0.69, 0.19), (0.11, 0.14, 0.13)),
+                 ((0, 0.74, -0.24), (0.11, 0.12, 0.12)), ((0, 0.63, 0.0), (0.11, 0.08, 0.22)),
+                 ((0, 0.87, -0.05), (0.105, 0.19, 0.2))):
+        body.ellipsoid(c, r)
+    body.ellipsoid((0, 0.555, 0.17), (0.055, 0.04, 0.07))                                          # chest pad
+    for s in (1, -1):
+        body.ellipsoid((0.075 * s, 0.7, 0.2), (0.045, 0.12, 0.07), rot=(-0.3, 0, 0))                  # shoulders
+        body.ellipsoid((0.075 * s, 0.72, -0.26), (0.05, 0.12, 0.09))                                 # thighs
+    body.chain([(0, 0.8, 0.28), (0, 0.74, 0.43), (0, 0.78, 0.56), (0, 0.9, 0.64), (0, 0.99, 0.67)],
+               [0.085, 0.062, 0.052, 0.046, 0.042], flat=0.72)                                        # neck
+    head_c = V((0, 1.02, 0.7))
+    body.ellipsoid(head_c, (0.045, 0.05, 0.055))                                                     # cranium
+    body.limb(head_c + V((0, -0.01, 0.02)), head_c + V((0, -0.04, 0.13)), 0.038, 0.028, flat=0.85)   # face
+    body.ellipsoid(head_c + V((0, -0.058, 0.13)), (0.03, 0.022, 0.035))                              # drooping lip
+    for s in (1, -1):
+        body.cone(head_c + V((0.03 * s, 0.035, -0.02)), head_c + V((0.042 * s, 0.065, -0.035)), 0.014, seg=8)   # ears
+        eyes.ellipsoid(head_c + V((0.038 * s, 0.012, 0.03)), (0.007, 0.008, 0.009))
+    HEAD = dict(face=head_c, muzzle=head_c + V((0, -0.04, 0.13)), poll=head_c + V((0, 0.03, -0.02)))
+    body.limb((0, 0.8, -0.35), (0, 0.6, -0.39), 0.018, 0.012)                                     # tail
+    body.ellipsoid((0, 0.57, -0.395), (0.018, 0.04, 0.016))                                        # tuft
+
+elif SPECIES == 'elephant':
+    # a war elephant: a massive barrel on pillar legs, a domed head with great ears, tusks, and a trunk on two bones
+    for c, r in (((0, 0.9, -0.02), (0.29, 0.3, 0.47)), ((0, 0.97, 0.25), (0.27, 0.28, 0.2)),
+                 ((0, 0.93, -0.32), (0.26, 0.26, 0.2)), ((0, 1.07, -0.02), (0.18, 0.12, 0.36)),
+                 ((0, 0.78, 0.0), (0.25, 0.14, 0.36))):
+        body.ellipsoid(c, r)
+    head_c = V((0, 1.06, 0.56))
+    body.limb((0, 1.0, 0.36), head_c, 0.22, 0.2, flat=0.9)                                          # neck
+    body.ellipsoid(head_c, (0.19, 0.22, 0.19))                                                       # head
+    body.ellipsoid(head_c + V((0, 0.1, 0.06)), (0.13, 0.12, 0.12))                                   # dome of the forehead
+    body.limb(head_c + V((0, -0.06, 0.12)), head_c + V((0, -0.16, 0.17)), 0.12, 0.09, flat=0.9)     # base of the trunk
+    for s in (1, -1):
+        eyes.ellipsoid(head_c + V((0.15 * s, 0.0, 0.11)), (0.012, 0.012, 0.014))
+    HEAD = dict(face=head_c)
+    body.limb((0, 1.0, -0.47), (0, 0.9, -0.54), 0.04, 0.03)                                        # root of the tail
+    body.limb((0, 0.9, -0.54), (0, 0.62, -0.58), 0.03, 0.018)                                      # tail
+    body.ellipsoid((0, 0.6, -0.582), (0.02, 0.04, 0.02))                                           # tuft
+    # tusks, curving forward and up from under the trunk
+    for s in (1, -1):
+        root_ = head_c + V((0.08 * s, -0.16, 0.12))
+        horn.chain([root_, root_ + V((0.02 * s, -0.12, 0.12)), root_ + V((0.03 * s, -0.12, 0.26)), root_ + V((0.03 * s, -0.06, 0.34))],
+                   [0.032, 0.026, 0.018, 0.006], seg=8)
+    HAS_HORN = True
+    # the trunk on its own two bones (children of the neck), hanging to near the ground
+    T0, T1, T2 = head_c + V((0, -0.14, 0.17)), V((0, 0.55, 0.8)), V((0, 0.2, 0.77))
+    BONES += [{'name': 'trunk', 'parent': 'neck', 'pivot': list(T0)}, {'name': 'trunk2', 'parent': 'trunk', 'pivot': list(T1)}]
+    tr1 = mk.Part('trunk', 'trunk', 'coat', voxel=0.003, smooth=4, tris=220)
+    tr1.limb(T0, T1, 0.09, 0.062, flat=0.95)
+    tr1.ball(T1, 0.062)
+    tr2 = mk.Part('trunk2', 'trunk2', 'coat', voxel=0.0025, smooth=4, tris=180)
+    tr2.ball(T1, 0.06)
+    tr2.limb(T1, T2, 0.06, 0.036, flat=0.95)
+    tr2.ellipsoid(T2 + V((0, -0.01, 0.01)), (0.038, 0.02, 0.038))
+    parts.extend([tr1.build(), tr2.build()])
+    # ears on their own bones, so they can flap
+    for s, side in ((1, 'L'), (-1, 'R')):
+        ep = head_c + V((0.14 * s, 0.1, -0.06))
+        BONES.append({'name': 'ear' + side, 'parent': 'neck', 'pivot': list(ep)})
+        ear = mk.Part('ear' + side, 'ear' + side, 'coat', voxel=0.003, smooth=5, tris=200)
+        ear.ellipsoid(ep + V((0.05 * s, -0.12, -0.08)), (0.025, 0.2, 0.16), rot=(0.2, 0.35 * s, 0))
+        ear.mask('inner', lambda p, n, s=s: ss(0.0, 0.5, n[2]))
+        parts.append(ear.build())
+
 else:  # wolf
     # deep chest and a ruff at the neck, a narrow waist, long legs, a long muzzle, erect ears and a bushy tail
     for c, r in (((0, 0.34, 0.1), (0.078, 0.105, 0.14)), ((0, 0.345, -0.06), (0.065, 0.08, 0.14)),
@@ -189,18 +263,19 @@ else:  # wolf
 
 # ------------------------------------------------------------------------------------------------ legs
 H = SP['H']
-k_r = H / 0.44   # leg thickness scale
+k_r = SP.get('legR', H / 0.44)   # leg thickness scale
 
 
 def upper_leg(fb, s):
     """The forearm or gaskin: part of the body mesh, weighted to the upper leg bone."""
     x, z = LX * s, FZ if fb == 'F' else BZ
     ky, kz = KNEE[fb]
+    pillar = SP['foot'] == 'pillar'
     if fb == 'F':
-        body.limb((x, LEG_Y + 0.01, z), (x, ky, kz), 0.034 * k_r, 0.02 * k_r, flat=0.85)
+        body.limb((x, LEG_Y + 0.01, z), (x, ky, kz), 0.034 * k_r, (0.031 if pillar else 0.02) * k_r, flat=0.85)
         body.ellipsoid((x, (LEG_Y + ky) / 2 + 0.01, z), (0.028 * k_r, (LEG_Y - ky) * 0.45, 0.032 * k_r))
     else:
-        body.limb((x, LEG_Y + 0.03, z + 0.01), (x, ky, kz), 0.042 * k_r, 0.019 * k_r, flat=0.8)
+        body.limb((x, LEG_Y + 0.03, z + 0.01), (x, ky, kz), 0.042 * k_r, (0.031 if pillar else 0.019) * k_r, flat=0.8)
         body.ellipsoid((x, LEG_Y - 0.01, z - 0.005), (0.032 * k_r, (LEG_Y - ky) * 0.5, 0.04 * k_r), rot=(0.25, 0, 0))
 
 
@@ -208,12 +283,15 @@ def lower_leg(fb, side, s):
     x = LX * s
     ky, kz = KNEE[fb]
     fz = FETZ[fb]
-    lo = mk.Part(f'leg{fb}{side}2', f'leg{fb}{side}2', 'coat', voxel=0.0018, smooth=4, tris=110)
-    lo.ball((x, ky, kz), 0.02 * k_r)
-    lo.limb((x, ky, kz), (x, FET, fz), 0.017 * k_r, 0.014 * k_r, flat=0.85)
-    lo.ball((x, FET, fz), 0.017 * k_r)
-    foot = mk.Part(f'leg{fb}{side}3', f'leg{fb}{side}3', 'coat', voxel=0.0016, smooth=3, tris=110)
-    foot.ball((x, FET, fz), 0.016 * k_r)
+    pillar = SP['foot'] == 'pillar'   # an elephant's leg is a column all the way down
+    r_knee, r_can, r_fet = (0.031, 0.029, 0.029) if pillar else (0.02, 0.017, 0.017)
+    vox = 0.003 if pillar else 0.0018
+    lo = mk.Part(f'leg{fb}{side}2', f'leg{fb}{side}2', 'coat', voxel=vox, smooth=4, tris=110)
+    lo.ball((x, ky, kz), r_knee * k_r)
+    lo.limb((x, ky, kz), (x, FET, fz), r_can * k_r, (r_fet - 0.003) * k_r, flat=0.85 if not pillar else 1.0)
+    lo.ball((x, FET, fz), r_fet * k_r)
+    foot = mk.Part(f'leg{fb}{side}3', f'leg{fb}{side}3', 'coat', voxel=vox, smooth=3, tris=110)
+    foot.ball((x, FET, fz), (r_fet - 0.001) * k_r)
     if SP['foot'] == 'hoof':
         # pastern and a cloven hoof
         hz = fz + 0.02 * k_r
@@ -221,6 +299,19 @@ def lower_leg(fb, side, s):
         for t in (1, -1):
             foot.ellipsoid((x + 0.008 * t * k_r, 0.012, hz + 0.004), (0.009 * k_r, 0.012, 0.018 * k_r))
         foot.mask('hoof', lambda p, n: ss(0.03, 0.022, p[1]))
+    elif SP['foot'] == 'pad':
+        # the camel's broad, two-toed pad
+        pz = fz + 0.02
+        foot.limb((x, FET, fz), (x, 0.03, pz), 0.02 * k_r, 0.024 * k_r)
+        foot.ellipsoid((x, 0.018, pz + 0.012), (0.042, 0.018, 0.052))
+        for t in (1, -1):
+            foot.ellipsoid((x + 0.018 * t, 0.012, pz + 0.05), (0.014, 0.01, 0.014))   # toenails
+        foot.mask('hoof', lambda p, n, pz=pz: ss(0.03, 0.045, p[2] - pz) * ss(0.02, 0.012, p[1]))
+    elif SP['foot'] == 'pillar':
+        # a round pillar of a foot with toenails round its front
+        foot.limb((x, FET, fz), (x, 0.03, fz + 0.01), 0.028 * k_r, 0.032 * k_r)
+        foot.ellipsoid((x, 0.03, fz + 0.01), (0.033 * k_r, 0.03, 0.034 * k_r))
+        foot.mask('hoof', lambda p, n, fz=fz: ss(0.4, 0.8, n[2]) * ss(0.06, 0.03, p[1]))
     else:
         # a paw with toes
         pz = fz + 0.018 * k_r
@@ -235,7 +326,8 @@ for side, s in (('L', 1), ('R', -1)):
     for fb in ('F', 'B'):
         upper_leg(fb, s)
         for piece in lower_leg(fb, side, s):
-            piece.mask('points', lambda p, n: 1.0 if SPECIES in ('sheep', 'boar') else ss(0.2, 0.08, p[1]))
+            if SPECIES not in ('camel', 'elephant'):
+                piece.mask('points', lambda p, n: 1.0 if SPECIES in ('sheep', 'boar') else ss(0.2, 0.08, p[1]))
             if SPECIES == 'deer':
                 piece.mask('belly', lambda p, n: ss(0.3, -0.3, n[2]) * 0.3 * ss(0.05, 0.15, p[1]))   # paler behind the legs
             parts.append(piece.build())
@@ -271,6 +363,11 @@ elif SPECIES == 'boar':
     body.mask('points', lambda p, n: max(ss(LEG_Y - 0.02, LEG_Y - 0.06, p[1]) * 0.8, ss(0.06, 0.03, (V(p) - face).length) * 0.3))
     body.mask('nose', lambda p, n: ss(0.02, 0.01, (V(p) - HEAD['snout']).length))
     body.mask('belly', lambda p, n: ss(-0.3, -0.8, n[1]) * 0.5)
+elif SPECIES == 'camel':
+    body.mask('belly', lambda p, n: ss(-0.3, -0.8, n[1]) * 0.6)
+    body.mask('points', lambda p, n: ss(0.8, 0.95, p[1]) * ss(0.2, 0.7, n[1]) * ss(0.25, 0.15, p[2]))   # darker hump
+elif SPECIES == 'elephant':
+    body.mask('points', lambda p, n: ss(0.3, 0.1, p[1]) * 0.5)
 else:
     body.mask('belly', lambda p, n: max(ss(-0.2, -0.7, n[1]), ss(0.03, 0.0, (p[1] - (face.y - 0.03))) * ss(0.25, 0.3, p[2]) * ss(-0.1, -0.6, n[1])))
     body.mask('saddle', lambda p, n: ss(0.2, 0.65, n[1]) * ss(0.26, 0.12, p[2]) * ss(-0.32, -0.2, p[2]))
@@ -286,6 +383,14 @@ if HAS_HORN:
 # ------------------------------------------------------------------------------------------------ bake and export
 ao = mk.bake_ao(parts, dist=0.16, near=0.03)
 tris = mk.export_model(parts, ao, BONES, out_path)
+# what a rider (rider.py mount=...) needs to fit its tack: the neck's bend and points of the head
+import json  # noqa: E402
+with open(out_path) as f_:
+    data_ = json.load(f_)
+data_['meta'] = dict(species=SPECIES, neckPivot=list(NECK_PIVOT), neckAxis=list(NECK_AXIS), neckRamp=list(NECK_RAMP),
+                     head={k: list(v) for k, v in HEAD.items()})
+with open(out_path, 'w') as f_:
+    json.dump(data_, f_, separators=(',', ':'))
 print(f'EXPORTED {out_path}: {len(parts)} parts, {tris} triangles')
 
 if preview_path:
@@ -294,6 +399,8 @@ if preview_path:
         'deer': dict(coat=(0.36, 0.17, 0.06), belly=(0.7, 0.6, 0.45), rump=(0.85, 0.8, 0.7), points=(0.06, 0.04, 0.03), nose=(0.02, 0.02, 0.02)),
         'boar': dict(coat=(0.1, 0.075, 0.06), points=(0.05, 0.04, 0.035), belly=(0.2, 0.16, 0.12), nose=(0.35, 0.22, 0.2)),
         'wolf': dict(coat=(0.32, 0.3, 0.27), belly=(0.7, 0.66, 0.6), saddle=(0.12, 0.11, 0.1), points=(0.4, 0.34, 0.26), nose=(0.02, 0.02, 0.02)),
+        'camel': dict(coat=(0.5, 0.33, 0.15), belly=(0.62, 0.48, 0.3), points=(0.35, 0.2, 0.08)),
+        'elephant': dict(coat=(0.2, 0.19, 0.18), points=(0.12, 0.11, 0.1)),
     }[SPECIES]
     OTHER = {'eye': (0.01, 0.008, 0.007), 'horn': (0.55, 0.45, 0.3) if SPECIES == 'deer' else (0.85, 0.8, 0.7), 'bristle': (0.05, 0.04, 0.035)}
     colors = {}

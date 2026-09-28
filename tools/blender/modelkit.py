@@ -345,7 +345,7 @@ def vertex_masks(o):
     return out
 
 
-def export_model(objs, ao, bones, path, variants=None):
+def export_model(objs, ao, bones, path, variants=None, masks=None):
     """
     Write bones (absolute rest pivots) and parts: positions relative to the part's bone pivot (game space),
     normals, AO, masks and triangle indices.
@@ -368,9 +368,9 @@ def export_model(objs, ao, bones, path, variants=None):
                 'ao': [round(a, 2) for a in ao[o.name]], 'idx': idx}
         if variants and variants.get(o.name):
             part['variant'] = variants[o.name]
-        masks = vertex_masks(o)
-        if masks:
-            part['masks'] = {k: [round(x, 2) for x in v] for k, v in masks.items()}
+        m = masks[o.name] if masks is not None else vertex_masks(o)
+        if m:
+            part['masks'] = {k: [round(x, 2) for x in v] for k, v in m.items()}
         out['parts'].append(part)
     with open(path, 'w') as f:
         json.dump(out, f, separators=(',', ':'))

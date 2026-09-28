@@ -14,9 +14,18 @@ run tools/blender/horse.py -- "$OUT/horse_light.json" --tris 0.38 &
 wait
 # units listed in one of equipment.py's tables (KITS or RIDER_KITS)
 kits() { awk "/^$1 = \{/{f=1;next} /^\}/{f=0} f" tools/blender/equipment.py | grep -oE "^    '[a-zA-Z]+': dict" | sed "s/    '//; s/': dict//"; }
-# horsemen: rider and tack fitted to the full-detail horse, dressed per unit (equipment.RIDER_KITS)
+# other mounts: full detail to fit riders and tack to, light for the game
+for m in camel elephant; do
+  run tools/blender/quadruped.py -- $m "$OUT/mount_$m.json" &
+  run tools/blender/quadruped.py -- $m "$OUT/mount_${m}_light.json" --tris 0.38 &
+done
+wait
+# horsemen (and camel and elephant riders): rider and tack fitted to the full-detail mount, dressed per unit
+# (equipment.RIDER_KITS)
 for u in $(kits RIDER_KITS); do
-  run tools/blender/rider.py -- "$OUT/horse.json" "$OUT/cav_$u.json" kit=$u --tris 0.38 &
+  m=$(grep -E "^    '$u': dict" tools/blender/equipment.py | grep -oE "mount='[a-z]+'" | cut -d"'" -f2)
+  mount="$OUT/horse.json"; [ -n "$m" ] && mount="$OUT/mount_$m.json"
+  run tools/blender/rider.py -- "$mount" "$OUT/cav_$u.json" kit=$u --tris 0.38 &
   while [ "$(jobs -r | wc -l)" -ge 6 ]; do sleep 1; done
 done
 wait
