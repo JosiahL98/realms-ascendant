@@ -26,6 +26,9 @@ export interface AIController {
   loadState?(s: Record<string, unknown>): void;
 }
 
+/** Game speeds offered (the + and - keys step through them). */
+export const SPEEDS = [0.5, 1, 1.5, 2, 3, 4, 5, 7, 10];
+
 /** Game time between autosaves (s). */
 const AUTOSAVE_EVERY = 300;
 
@@ -233,7 +236,9 @@ export class Session {
     this.input.update(dt);
     if (!this.paused && !this.ended) {
       const before = this.game.tickCount;
-      this.alpha = this.game.update(dt * this.speed, 10);
+      // fast speeds need many ticks a frame; a wall-clock budget keeps the screen responsive when the simulation
+      // cannot keep up (the game then simply runs as fast as it can)
+      this.alpha = this.game.update(dt * this.speed, Math.max(10, Math.ceil(this.speed * 4)), 45);
       const ticks = this.game.tickCount - before;
       if (ticks > 0) {
         for (const { pid, ai } of this.ais) {

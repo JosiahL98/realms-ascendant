@@ -513,7 +513,7 @@ export class Hud {
     const m = this.openModal(`<h2>Game Menu</h2>
       <button class="mbtn" data-a="resume">Resume</button>
       <div style="text-align:center;margin:8px 0">Game speed:
-        ${[1, 1.5, 2, 3].map((v) => `<button class="mbtn small" data-speed="${v}" style="${s.speed === v ? 'color:#fff;border-color:#fff' : ''}">${v}×</button>`).join('')}</div>
+        ${[1, 1.5, 2, 3, 5, 10].map((v) => `<button class="mbtn small" data-speed="${v}" style="${s.speed === v ? 'color:#fff;border-color:#fff' : ''}">${v}×</button>`).join('')}</div>
       <div style="text-align:center;margin:8px 0">Graphics:
         ${(['low', 'medium', 'high'] as const).map((q) => `<button class="mbtn small" data-quality="${q}" style="${s.renderer.quality === q ? 'color:#fff;border-color:#fff' : ''}">${q[0].toUpperCase() + q.slice(1)}</button>`).join('')}</div>
       <div style="text-align:center;margin:8px 0">Sound:

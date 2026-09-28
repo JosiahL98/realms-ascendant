@@ -2,7 +2,7 @@ import { BUILDINGS } from '../data/buildings';
 import type { Building, Entity, Unit } from '../sim/entities';
 import { canPlace } from '../sim/commands';
 import { canGarrisonIn, isMilitary } from '../sim/unitAI';
-import type { Session } from './session';
+import { SPEEDS, type Session } from './session';
 
 interface DownState {
   x: number;
@@ -555,13 +555,12 @@ export class Input {
       s.paused = !s.paused;
       return;
     }
-    if (e.key === '+' || e.key === '=') {
-      s.speed = Math.min(4, +(s.speed + 0.5).toFixed(1));
-      s.hud.message(`Game speed ${s.speed}×`);
-      return;
-    }
-    if (e.key === '-' || e.key === '_') {
-      s.speed = Math.max(0.5, +(s.speed - 0.5).toFixed(1));
+    if (e.key === '+' || e.key === '=' || e.key === '-' || e.key === '_') {
+      // step along the speed ladder (0.5x up to 10x)
+      const up = e.key === '+' || e.key === '=';
+      const i = SPEEDS.findIndex((v) => v >= s.speed - 1e-6);
+      const cur = i < 0 ? SPEEDS.length - 1 : i;
+      s.speed = SPEEDS[Math.max(0, Math.min(SPEEDS.length - 1, up ? (SPEEDS[cur] > s.speed + 1e-6 ? cur : cur + 1) : cur - 1))];
       s.hud.message(`Game speed ${s.speed}×`);
       return;
     }

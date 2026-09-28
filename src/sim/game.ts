@@ -504,13 +504,16 @@ export class Game {
   /* ------------------------------------------------------------------ */
 
   /** Advance by real elapsed seconds scaled by game speed. Returns interpolation alpha. */
-  update(dtSeconds: number, maxSteps = 8): number {
+  /** Advances by dtSeconds of game time (at most maxSteps ticks, and at most budgetMs of real time if given). */
+  update(dtSeconds: number, maxSteps = 8, budgetMs = Infinity): number {
     this.acc += dtSeconds;
     let steps = 0;
+    const t0 = budgetMs < Infinity ? performance.now() : 0;
     while (this.acc >= TICK && steps < maxSteps) {
       this.step();
       this.acc -= TICK;
       steps++;
+      if (budgetMs < Infinity && performance.now() - t0 > budgetMs) break;
     }
     if (this.acc > TICK * maxSteps) this.acc = TICK * maxSteps;
     return this.acc / TICK;
