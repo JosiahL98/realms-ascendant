@@ -109,7 +109,8 @@ export class Game {
   buildingsVersion = 0;
   resourcesVersion = 0;
 
-  constructor(setup: GameSetup) {
+  /** `restoring`: an empty world for a saved game to be poured into (see save.ts), rather than a new map. */
+  constructor(setup: GameSetup, restoring = false) {
     this.setup = setup;
     this.rng = new RNG(setup.seed);
     this.map = new GameMap(setup.mapSize);
@@ -127,6 +128,7 @@ export class Game {
     this.spatial = new SpatialHash(setup.mapSize, 2);
     this.pathfinder = new Pathfinder(this.map, this.teamOf);
     this.vision = new Vision(this);
+    if (restoring) return;
     generateMap(this);
     this.map.refreshAll();
     this.map.labelWaterBodies();

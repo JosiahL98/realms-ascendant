@@ -7,25 +7,55 @@ import { AIPlayer } from './ai/ai';
 import { issueCommand } from './sim/commands';
 import { loadTextureAssets } from './render/assets';
 import { loadBakedRigs } from './render/models/baked';
+import { readSave } from './ui/saves';
+import type { SaveData } from './sim/save';
 
 const app = document.getElementById('app')!;
 const audio = new AudioSys();
 let session: Session | null = null;
 
-const menus = new Menus(app, audio, startGame);
+const menus = new Menus(app, audio, startGame, loadGame);
 
-function startGame(setup: GameSetup): void {
-  menus.showLoading('Preparing the realm…');
+/** Starts a new game from `setup`, or goes on with a saved one (`restore`). */
+function startGame(setup: GameSetup, restore: SaveData | null = null): void {
+  menus.showLoading(restore ? 'Restoring the realm…' : 'Preparing the realm…');
   // let the loading screen paint before the heavy lifting
   setTimeout(async () => {
     // ?oldunits=1 keeps the procedural unit models (for comparing)
     const [assets] = await Promise.all([loadTextureAssets(), new URLSearchParams(location.search).get('oldunits') ? Promise.resolve() : loadBakedRigs()]);
     app.innerHTML = '';
-    session = new Session(app, setup, (game, pid) => new AIPlayer(game, pid, setup.players[pid - 1].difficulty), backToMenu, audio, assets);
-    applyDebug(session);
+    try {
+      session = new Session(app, setup, (game, pid) => new AIPlayer(game, pid, setup.players[pid - 1].difficulty), backToMenu, audio, assets, restore);
+    } catch (e) {
+      session = null;
+      void menus.showLoad(`That game could not be loaded: ${(e as Error).message}`);
+      return;
+    }
+    session.onLoadGame = loadGame;
+    if (!restore) applyDebug(session);
     session.start();
     (window as unknown as Record<string, unknown>).__ready = true;
   }, 50);
+}
+
+/** Loads a saved game (from the main menu, or from the menu of a game in progress). */
+async function loadGame(id: string): Promise<void> {
+  let data: SaveData | undefined;
+  try {
+    data = await readSave(id);
+  } catch (e) {
+    void menus.showLoad(`The saved games could not be read: ${(e as Error).message}`);
+    return;
+  }
+  if (session) {
+    session.stop();
+    session = null;
+  }
+  if (!data) {
+    void menus.showLoad('That saved game is missing.');
+    return;
+  }
+  startGame(data.setup, data);
 }
 
 function backToMenu(): void {

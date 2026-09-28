@@ -6,6 +6,7 @@ import { MAP_SIZES, MAP_TYPES, type MapType } from '../sim/mapgen';
 import { PLAYER_COLORS } from '../sim/player';
 import { civEmblem, unitIcon } from './icons';
 import type { AudioSys } from '../audio/audio';
+import { deleteSave, listSaves, saveListHtml, type SaveMeta } from './saves';
 
 const dataUri = (s: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
 
@@ -28,12 +29,14 @@ export class Menus {
   private root: HTMLElement;
   private audio: AudioSys;
   private onStart: (setup: GameSetup) => void;
+  private onLoad: (id: string) => void;
   private state: SetupState;
 
-  constructor(root: HTMLElement, audio: AudioSys, onStart: (s: GameSetup) => void) {
+  constructor(root: HTMLElement, audio: AudioSys, onStart: (s: GameSetup) => void, onLoad: (id: string) => void) {
     this.root = root;
     this.audio = audio;
     this.onStart = onStart;
+    this.onLoad = onLoad;
     this.state = this.loadState();
   }
 
@@ -84,6 +87,7 @@ export class Menus {
       <div class="menu-buttons">
         <button class="mbtn" data-a="play">Single Player</button>
         <button class="mbtn" data-a="quick">Quick Battle</button>
+        <button class="mbtn" data-a="load">Load Game</button>
         <button class="mbtn" data-a="watch">Watch a Match</button>
         <button class="mbtn" data-a="civs">The Eight Realms</button>
         <button class="mbtn" data-a="help">How to Play</button>
@@ -100,6 +104,7 @@ export class Menus {
         this.showSetup();
       }
       else if (a === 'quick') this.start(true);
+      else if (a === 'load') void this.showLoad();
       else if (a === 'civs') this.showCivs();
       else if (a === 'help') this.showHelp();
     }));
@@ -113,6 +118,7 @@ export class Menus {
       <p><b>Advance.</b> At the Town Center, research the next age once you own two buildings of your current age. Each age unlocks stronger units, buildings and technologies. In the Castle Age you can build a Castle to train your realm's unique unit.</p>
       <p><b>Fight.</b> Spearmen counter cavalry, cavalry counters archers, archers counter infantry, skirmishers counter archers, rams and trebuchets destroy buildings. Priests heal and convert, and carry relics to your Temple for a steady income of gold.</p>
       <p><b>Win</b> by destroying all enemy units and buildings, or by building a Wonder and defending it for 600 seconds.</p>
+      <p><b>Saving:</b> save and load from the in-game Menu (<kbd>F10</kbd>) or load from the main menu. The game also saves itself every five minutes of play (the Autosave). Saves are kept in this browser.</p>
       <p><b>Controls:</b> left-click/drag to select, right-click to command, <kbd>Shift</kbd> to queue, arrow keys or screen edges to scroll, wheel to zoom, <kbd>H</kbd> Town Center, <kbd>.</kbd> idle villager, <kbd>Space</kbd> last alert, <kbd>Ctrl+1-9</kbd> groups, <kbd>F3</kbd> pause, <kbd>F10</kbd> menu. Command buttons use the grid <kbd>Q W E R T</kbd> / <kbd>A S D F G</kbd> / <kbd>Z X C V B</kbd>.</p>
       </div><div class="menu-buttons" style="margin-top:16px"><button class="mbtn" data-a="back">Back</button></div>`);
     (el.querySelector('[data-a=back]') as HTMLElement).addEventListener('click', () => this.showMain());
@@ -250,6 +256,31 @@ export class Menus {
       spectator: !quick && !!s.spectate,
     };
     this.onStart(setup);
+  }
+
+  /** The saved games, newest first: load one, or delete it. */
+  async showLoad(message = ''): Promise<void> {
+    let saves: SaveMeta[] = [];
+    let err = message;
+    try {
+      saves = await listSaves();
+    } catch (e) {
+      err = (e as Error).message;
+    }
+    const el = this.frame(`<h2 style="font-family:Cinzel;color:#f2d98c;text-align:center;font-size:32px">Load Game</h2>
+      <div class="save-panel">${err ? `<p class="save-err">${err.replace(/</g, '&lt;')}</p>` : ''}${saveListHtml(saves, 'load')}</div>
+      <div class="menu-buttons" style="margin-top:16px"><button class="mbtn" data-a="back">Back</button></div>`);
+    (el.querySelector('[data-a=back]') as HTMLElement).addEventListener('click', () => this.showMain());
+    el.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async () => {
+      this.audio.play('click');
+      const id = ((b as HTMLElement).closest('.save-row') as HTMLElement).dataset.id!;
+      const meta = saves.find((x) => x.id === id);
+      if ((b as HTMLElement).dataset.act === 'delete') {
+        if (!meta || !confirm(`Delete "${meta.name}"? This cannot be undone.`)) return;
+        await deleteSave(id);
+        void this.showLoad();
+      } else this.onLoad(id);
+    }));
   }
 
   showLoading(text: string): void {

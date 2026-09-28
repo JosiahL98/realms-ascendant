@@ -211,3 +211,22 @@ body:has(#specboard) #scores { display: none; }
 .loading .bar { width: 420px; height: 12px; border: 2px solid var(--gold-lo); margin-top: 16px; }
 .loading .bar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--gold-lo), var(--gold-hi)); transition: width 0.2s; }
 .paused-banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-family: 'Cinzel', serif; font-size: 48px; color: var(--gold-hi); text-shadow: 0 0 12px #000, 0 3px 4px #000; z-index: 30; pointer-events: none; }
+
+/* saved games */
+.save-panel { max-width: 760px; margin: 0 auto; }
+.save-list { display: flex; flex-direction: column; gap: 8px; max-height: 52vh; overflow-y: auto; margin: 8px 0 12px; padding-right: 4px; min-width: min(640px, 80vw); }
+.save-row { display: flex; align-items: center; gap: 12px; padding: 8px 10px; background: rgba(0, 0, 0, 0.32); border: 1px solid rgba(216, 178, 90, 0.35); border-radius: 5px; }
+.save-row:hover { border-color: var(--gold); background: rgba(0, 0, 0, 0.45); }
+.save-thumb { width: 128px; height: 72px; object-fit: cover; border: 1px solid rgba(216, 178, 90, 0.5); background: #111; flex: none; }
+.save-info { flex: 1; min-width: 0; }
+.save-name { font-family: 'Cinzel', serif; font-weight: 700; font-size: 16px; color: var(--gold-hi); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.save-sub { font-size: 13px; opacity: 0.85; margin-top: 2px; }
+.save-tag { font-family: sans-serif; font-size: 11px; font-weight: 400; padding: 1px 6px; border-radius: 3px; background: rgba(216, 178, 90, 0.25); color: var(--parch); vertical-align: 2px; }
+.save-acts { display: flex; flex-direction: column; flex: none; }
+.save-new { display: flex; gap: 8px; align-items: center; margin: 4px 0 12px; }
+.save-new input { flex: 1; font: 16px 'EB Garamond', serif; padding: 7px 10px; background: #1a1208; color: var(--parch); border: 1px solid var(--gold); border-radius: 4px; }
+.save-head { font-size: 14px; opacity: 0.8; margin-top: 6px; }
+.save-empty { text-align: center; opacity: 0.75; margin: 18px 0; }
+.save-err { color: #ff9a80; text-align: center; }
+.save-note { font-size: 13px; opacity: 0.7; text-align: center; margin: 4px 0; }
+.save-realm { filter: brightness(1.7) saturate(0.85); font-weight: 600; }

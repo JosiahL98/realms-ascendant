@@ -91,6 +91,21 @@ export class AIPlayer {
     }
   }
 
+  /** Plans and memory for a saved game (what it builds up over time; its unit lists are gathered afresh each think). */
+  saveState(): Record<string, unknown> {
+    const skip = new Set(['game', 'p', 'cfg', 'myUnits', 'myBuildings', 'vills', 'army', 'rng']);
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(this)) if (!skip.has(k)) out[k] = v;
+    out.rngState = (this.rng as unknown as { s: number }).s;
+    return out;
+  }
+
+  loadState(s: Record<string, unknown>): void {
+    const { rngState, ...rest } = s;
+    Object.assign(this, rest);
+    (this.rng as unknown as { s: number }).s = rngState as number;
+  }
+
   private cmd(c: Command): boolean {
     return issueCommand(this.game, this.pid, c).ok;
   }

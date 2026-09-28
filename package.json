@@ -8,6 +8,7 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit -p .",
     "simtest": "tsx tools/simtest.ts",
+    "savetest": "tsx tools/savetest.ts",
     "shot": "node tools/screenshot.mjs"
   },
   "keywords": [],

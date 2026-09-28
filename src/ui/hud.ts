@@ -6,6 +6,7 @@ import type { Building, Entity, Unit } from '../sim/entities';
 import { computeButtons, entityIcon, GRID_KEYS, type CmdButton } from './commandPanel';
 import { resIcon, unitIcon, techIcon, civEmblem } from './icons';
 import type { Session } from './session';
+import { deleteSave, formatClock, listSaves, saveListHtml, type SaveMeta } from './saves';
 
 const RES_ORDER: Res[] = ['wood', 'food', 'gold', 'stone'];
 
@@ -518,6 +519,8 @@ export class Hud {
       <div style="text-align:center;margin:8px 0">Sound:
         <button class="mbtn small" data-a="sfx">${s.audio.sfxOn ? 'Effects on' : 'Effects off'}</button>
         <button class="mbtn small" data-a="music">${s.audio.musicOn ? 'Music on' : 'Music off'}</button></div>
+      <button class="mbtn" data-a="save">Save game</button>
+      <button class="mbtn" data-a="load">Load game</button>
       <button class="mbtn" data-a="help">How to play</button>
       <button class="mbtn" data-a="resign">Resign</button>
       <button class="mbtn" data-a="quit">Quit to main menu</button>`);
@@ -535,6 +538,8 @@ export class Hud {
         this.closeModal();
         s.paused = false;
       } else if (a === 'help') this.showHelp();
+      else if (a === 'save') void this.showSave();
+      else if (a === 'load') void this.showLoad();
       else if (a === 'sfx') {
         s.audio.sfxOn = !s.audio.sfxOn;
         this.showMenu();
@@ -552,6 +557,78 @@ export class Hud {
     }));
   }
 
+  /** Save: a name for a new save, or an existing one to save over. */
+  async showSave(): Promise<void> {
+    const s = this.s;
+    let saves: SaveMeta[] = [];
+    let err = '';
+    try {
+      saves = await listSaves();
+    } catch (e) {
+      err = (e as Error).message;
+    }
+    const me = s.game.players[s.local];
+    const suggested = `${s.spectator ? 'Match' : me.civ.name} — ${AGE_NAMES[me.age]}, ${formatClock(s.game.time)}`;
+    const m = this.openModal(`<h2>Save Game</h2>
+      ${err ? `<p class="save-err">${escapeHtml(err)}</p>` : ''}
+      <div class="save-new"><input id="save-name" maxlength="60" value="${escapeHtml(suggested)}">
+        <button class="mbtn small" data-a="new">Save</button></div>
+      ${saves.some((x) => !x.auto) ? '<div class="save-head">Or save over an earlier game:</div>' + saveListHtml(saves.filter((x) => !x.auto), 'save') : ''}
+      <button class="mbtn" data-a="back">Back</button>`);
+    const input = m.querySelector('#save-name') as HTMLInputElement;
+    input.focus();
+    input.select();
+    // typing a name must not trigger the game's hotkeys
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') (m.querySelector('[data-a=new]') as HTMLElement).click();
+    });
+    const finish = async (name: string, id?: string) => {
+      m.querySelectorAll('button').forEach((b) => ((b as HTMLButtonElement).disabled = true));
+      await s.save(name.trim() || suggested, id);
+      this.closeModal();
+      s.paused = false;
+    };
+    (m.querySelector('[data-a=new]') as HTMLElement).addEventListener('click', () => void finish(input.value));
+    (m.querySelector('[data-a=back]') as HTMLElement).addEventListener('click', () => this.showMenu());
+    m.querySelectorAll('[data-act=overwrite]').forEach((b) => b.addEventListener('click', () => {
+      const row = (b as HTMLElement).closest('.save-row') as HTMLElement;
+      const old = saves.find((x) => x.id === row.dataset.id);
+      if (old && confirm(`Save over "${old.name}"?`)) void finish(input.value, old.id);
+    }));
+  }
+
+  /** Load: the saved games, newest first. */
+  async showLoad(): Promise<void> {
+    const s = this.s;
+    let saves: SaveMeta[] = [];
+    let err = '';
+    try {
+      saves = await listSaves();
+    } catch (e) {
+      err = (e as Error).message;
+    }
+    const m = this.openModal(`<h2>Load Game</h2>
+      ${err ? `<p class="save-err">${escapeHtml(err)}</p>` : ''}
+      ${saveListHtml(saves, 'load')}
+      <p class="save-note">The game in progress is not saved when you load another.</p>
+      <button class="mbtn" data-a="back">Back</button>`);
+    (m.querySelector('[data-a=back]') as HTMLElement).addEventListener('click', () => this.showMenu());
+    m.querySelectorAll('[data-act]').forEach((b) => b.addEventListener('click', async () => {
+      const row = (b as HTMLElement).closest('.save-row') as HTMLElement;
+      const id = row.dataset.id!;
+      const meta = saves.find((x) => x.id === id);
+      if ((b as HTMLElement).dataset.act === 'delete') {
+        if (!meta || !confirm(`Delete "${meta.name}"? This cannot be undone.`)) return;
+        await deleteSave(id);
+        void this.showLoad();
+      } else if (s.onLoadGame) {
+        this.closeModal();
+        s.onLoadGame(id);
+      }
+    }));
+  }
+
   showHelp(): void {
     const m = this.openModal(`<h2>How to Play</h2><div class="help" style="max-width:760px">
       <p><b>Goal:</b> gather resources, grow your population, advance through the four ages, and destroy every enemy unit and building — or build a Wonder and defend it.</p>
@@ -560,6 +637,7 @@ export class Hud {
       <p><b>Hotkeys:</b> The command grid uses <kbd>Q W E R T</kbd> / <kbd>A S D F G</kbd> / <kbd>Z X C V B</kbd>. <kbd>H</kbd> selects your Town Center, <kbd>.</kbd> next idle villager, <kbd>,</kbd> idle military, <kbd>Space</kbd> jumps to the last alert, <kbd>Ctrl+1-9</kbd> makes a control group, <kbd>1-9</kbd> recalls it, <kbd>Del</kbd> deletes, <kbd>Esc</kbd> cancels, <kbd>F3</kbd> or <kbd>P</kbd> pauses, <kbd>+</kbd>/<kbd>-</kbd> change game speed, <kbd>R</kbd> rotates a gate while placing.</p>
       <p><b>Economy:</b> Villagers carry 10 of a resource to the nearest drop-off (Town Center, Mill, Lumber Camp, Mining Camp). Herd sheep to your Town Center, hunt deer and boar (boar fight back!), forage berries, then build farms around a Mill. Houses give 5 population each.</p>
       <p><b>Ages:</b> Research the next age at the Town Center once you have two buildings of the current age.</p>
+      <p><b>Saving:</b> save and load from the in-game Menu (<kbd>F10</kbd>) or load from the main menu. The game also saves itself every five minutes of play (the Autosave). Saves are kept in this browser.</p>
       <p><b>Combat:</b> Spears beat cavalry, cavalry beats archers, archers beat infantry, skirmishers beat archers, siege beats buildings. Temple priests heal and convert; bring relics home for gold.</p>
       </div><button class="mbtn" data-a="close">Close</button>`);
     (m.querySelector('[data-a=close]') as HTMLElement).addEventListener('click', () => {

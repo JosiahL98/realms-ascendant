@@ -1,4 +1,6 @@
 import { Game, type GameSetup, TICK } from '../sim/game';
+import { restoreGame, snapshotGame, type SaveData } from '../sim/save';
+import { AUTOSAVE_ID, formatClock, newSaveId, writeSave, type SaveMeta } from './saves';
 import type { Building, Entity, Unit } from '../sim/entities';
 import { issueCommand, type Command, type CmdResult } from '../sim/commands';
 import { Renderer } from '../render/renderer';
@@ -19,7 +21,13 @@ export type TargetMode = 'attackMove' | 'patrol' | 'follow' | 'garrison' | 'repa
 
 export interface AIController {
   update(): void;
+  /** Plans and memory to keep in a saved game, and to take back up on loading it. */
+  saveState?(): Record<string, unknown>;
+  loadState?(s: Record<string, unknown>): void;
 }
+
+/** Game time between autosaves (s). */
+const AUTOSAVE_EVERY = 300;
 
 export class Session {
   game: Game;
@@ -53,16 +61,22 @@ export class Session {
   ended = false;
   selVersion = 0;
   private fxTimer = 0;
+  /** Loading a saved game from the in-game menu (set by main.ts, which starts a new session for it). */
+  onLoadGame: ((id: string) => void) | null = null;
+  private nextAutosave = AUTOSAVE_EVERY;
+  private saving = false;
 
+  /** `restore`: a saved game to go on with, instead of a new one from `setup`. */
   constructor(root: HTMLElement, setup: GameSetup, makeAI: (game: Game, pid: number) => AIController | null, onExit: () => void, audio: AudioSys,
-    assets: TextureAssets | null = null) {
+    assets: TextureAssets | null = null, restore: SaveData | null = null) {
     this.root = root;
     this.onExit = onExit;
     this.audio = audio;
-    this.game = new Game(setup);
+    this.game = restore ? restoreGame(restore) : new Game(setup);
     this.spectator = !!setup.spectator;
     this.local = this.spectator ? 1 : setup.players.findIndex((p) => p.human) + 1 || 1;
     this.viewAll = this.spectator;
+    this.nextAutosave = this.game.time + AUTOSAVE_EVERY;
     root.innerHTML = `<canvas id="view"></canvas><div id="vignette"></div><canvas id="overlay"></canvas><div id="hud"></div>`;
     this.canvas = root.querySelector('#view') as HTMLCanvasElement;
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
@@ -74,18 +88,24 @@ export class Session {
     for (const p of this.game.players) {
       if (p.isGaia || p.isHuman) continue;
       const ai = makeAI(this.game, p.id);
-      if (ai) this.ais.push({ pid: p.id, ai });
+      if (!ai) continue;
+      const saved = restore?.ai.find(([pid]) => pid === p.id);
+      if (saved && ai.loadState) ai.loadState(saved[1]);
+      this.ais.push({ pid: p.id, ai });
     }
     const tc = this.game.buildings.find((b) => b.owner === this.local && b.type === 'townCenter');
     if (this.spectator) {
       this.renderer.setViewTeam(-1);
       this.renderer.centerOn(this.game.map.n / 2, this.game.map.n / 2);
     } else if (tc) this.renderer.centerOn(tc.x + 1, tc.z + 1);
+    if (restore) this.restoreView(restore.view);
     this.resize();
     window.addEventListener('resize', this.resize);
     (window as unknown as Record<string, unknown>).__session = this;
     (window as unknown as Record<string, unknown>).__game = this.game;
-    if (this.spectator) {
+    if (restore) {
+      this.hud.message(`Game loaded: ${formatClock(this.game.time)} into the ${this.spectator ? 'match' : 'game'}.`, 'good');
+    } else if (this.spectator) {
       this.hud.message('You are watching the computer players. Choose whose eyes to see through at the top of the screen.', 'good');
     } else {
       this.hud.message(`Welcome, ${this.game.players[this.local].name} of ${this.game.players[this.local].civ.realm.replace(/^The /, "the ")}.`, "good");
@@ -125,6 +145,88 @@ export class Session {
     this.onExit();
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Saved games                                                          */
+  /* ------------------------------------------------------------------ */
+
+  /** The whole game as it stands, with the computer players' plans and the view. */
+  snapshot(): SaveData {
+    const ai: [number, Record<string, unknown>][] = [];
+    for (const { pid, ai: c } of this.ais) if (c.saveState) ai.push([pid, c.saveState()]);
+    const view = {
+      local: this.local, viewAll: this.viewAll, speed: this.speed, groups: this.groups,
+      camX: this.renderer.camX, camZ: this.renderer.camZ, zoom: this.renderer.zoom,
+    };
+    return snapshotGame(this.game, ai, view);
+  }
+
+  private restoreView(v: Record<string, unknown>): void {
+    if (typeof v.speed === 'number') this.speed = v.speed;
+    if (Array.isArray(v.groups)) this.groups = (v.groups as number[][]).map((g) => g.filter((id) => this.game.get(id)?.alive));
+    if (this.spectator && typeof v.viewAll === 'boolean') {
+      this.viewAll = v.viewAll;
+      if (typeof v.local === 'number') this.local = v.local;
+      this.renderer.setViewTeam(this.viewAll ? -1 : this.game.teamOf[this.local]);
+    }
+    if (typeof v.zoom === 'number') this.renderer.setZoom(v.zoom);
+    if (typeof v.camX === 'number' && typeof v.camZ === 'number') this.renderer.centerOn(v.camX, v.camZ);
+  }
+
+  /** What the save list shows for this game. */
+  private saveMeta(id: string, name: string, auto: boolean): SaveMeta {
+    const g = this.game;
+    const me = g.players[this.local];
+    return {
+      id, name, savedAt: Date.now(), gameTime: g.time, auto,
+      realm: this.spectator ? 'Watching a match' : me.civ.realm, civ: me.civ.id, color: this.spectator ? '#f2d98c' : me.color.css,
+      mapType: g.setup.mapType, mapSize: g.setup.mapSize,
+      players: g.players.filter((p) => !p.isGaia).map((p) => p.civ.name).join(' vs '),
+      age: AGE_NAMES[me.age] ?? '',
+      thumb: this.thumbnail(),
+    };
+  }
+
+  /** A small picture of the view for the save list (drawn afresh: the canvas does not keep its last frame). */
+  private thumbnail(): string {
+    try {
+      this.renderer.render(this.paused ? 1 : this.alpha);
+      const W = 256, H = 144;
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const src = this.canvas;
+      let w = src.width, h = src.width * H / W;
+      if (h > src.height) {
+        h = src.height;
+        w = h * W / H;
+      }
+      c.getContext('2d')!.drawImage(src, (src.width - w) / 2, (src.height - h) / 2, w, h, 0, 0, W, H);
+      return c.toDataURL('image/jpeg', 0.75);
+    } catch {
+      return '';
+    }
+  }
+
+  /** Saves the game under `name` (a new save, or over `id`). */
+  async save(name: string, id = newSaveId(), auto = false): Promise<void> {
+    if (this.saving) return;
+    this.saving = true;
+    try {
+      await writeSave(this.saveMeta(id, name, auto), this.snapshot());
+      if (!auto) this.hud.message(`Game saved: ${name}`, 'good');
+    } catch (e) {
+      this.hud.message(`The game could not be saved: ${(e as Error).message}`, 'err');
+    } finally {
+      this.saving = false;
+    }
+  }
+
+  private autosave(): void {
+    if (this.game.over || this.ended) return;
+    this.nextAutosave = this.game.time + AUTOSAVE_EVERY;
+    void this.save('Autosave', AUTOSAVE_ID, true);
+  }
+
   private frame(now: number): void {
     const dt = Math.min(0.25, (now - this.last) / 1000);
     this.last = now;
@@ -144,6 +246,7 @@ export class Session {
       }
     }
     this.processEvents();
+    if (this.game.time >= this.nextAutosave) this.autosave();
     this.renderer.selectedIds = new Set(this.selection);
     this.ambientFx(dt);
     this.renderer.render(this.paused ? 1 : this.alpha);
