@@ -274,7 +274,7 @@ function bakedUnitIcon(rig: BakedRig, color: number): string {
   restPose(pose, rig.bones.length);
   const kind = rig.meta.kind ?? (rig.id === 'scout' ? 'scout' : 'villager');
   const villager = kind !== 'scout';
-  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : kind === 'animal' ? ['stand'] : kind === 'siege' ? ['idle'] : ['horse:stand', 'rider:hold']) {
+  for (const name of kind === 'villager' ? ['idle:axe'] : kind === 'soldier' ? ['idle'] : kind === 'animal' ? ['stand'] : kind === 'siege' || kind === 'ship' ? ['idle'] : ['horse:stand', 'rider:hold']) {
     const clip = rig.clips.get(name);
     if (clip) sampleClip(clip, 0, pose);
   }

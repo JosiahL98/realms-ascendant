@@ -42,7 +42,7 @@ export interface BakedRig {
   parts: BakedPart[];
   clips: Map<string, BakedClip>;
   meta: {
-    kind?: 'villager' | 'scout' | 'soldier' | 'animal' | 'siege';
+    kind?: 'villager' | 'scout' | 'soldier' | 'animal' | 'siege' | 'ship';
     /** Siege engines: the distance travelled in one turn of the wheels. */
     moveDist?: number;
     walkSpeed?: number;

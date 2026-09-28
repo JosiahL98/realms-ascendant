@@ -59,13 +59,17 @@ function state(rig: BakedRig, a: string, t: number): AnimState {
     if (!gaits && a !== 'walk') speed *= 1;
   }
   const name = (a === 'trot' || a === 'canter' ? 'walk' : a) as AnimState['anim'];
-  return { anim: name, t, time: t, speed, moving, attackDelay: rig.meta.attackHit ?? 0.5, reload: 2, tool: null, seed: 0, packed: q.get('packed') === '1' };
+  return { anim: name, t, time: t, speed, moving, attackDelay: rig.meta.attackHit ?? 0.5, reload: 2, tool: null, seed: 0, packed: packedOverride ?? q.get('packed') === '1' };
 }
+
+let only: string | null = null;
+let packedOverride: boolean | null = null;   // __shot({ unit }) draws just that unit, at the origin
 
 function draw(t: number): void {
   units.begin();
   rigs.forEach((rig, i) => {
-    const [x, z] = layout(i, rigs.length);
+    if (only && rig.id !== only) return;
+    const [x, z] = only ? [0, 0] : layout(i, rigs.length);
     const at = anim === 'attack' ? t % Math.max(1.6, (rig.meta.attackHit ?? 0.5) * 2 + 0.4) : anim === 'die' ? Math.min(t % 4, 3) : t;
     units.draw(rig, x, 0, z, 0, state(rig, anim, at), TEAM[i % TEAM.length], null, anim === 'work', 1, false);
   });
@@ -134,8 +138,10 @@ async function main(): Promise<void> {
     requestAnimationFrame(loop);
   };
   loop();
-  (window as any).__shot = (o: { anim?: string; t?: number; azim?: number; elev?: number; dist?: number; target?: number[]; w?: number; h?: number }) => {
+  (window as any).__shot = (o: { anim?: string; t?: number; azim?: number; elev?: number; dist?: number; target?: number[]; unit?: string; packed?: boolean }) => {
     (window as any).__still = true;
+    only = o.unit ?? null;
+    packedOverride = o.packed ?? null;
     if (o.anim) anim = o.anim;
     if (o.azim !== undefined) azim = o.azim;
     if (o.elev !== undefined) elev = o.elev;

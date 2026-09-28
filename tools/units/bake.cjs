@@ -511,6 +511,60 @@ function bakeCart(file, id) {
     parts: mergeParts(model, (p, i) => (horse.parts.includes(p) ? riderColor(COATS.mule)(p, i) : siegeColor(p))), clips, meta };
 }
 
+// ------------------------------------------------------------------------------------------------ ships
+const SHIP_KIT = {
+  hull: 0x6a4a2a, deck: 0xa8845a, wood: 0x7a5230, darkwood: 0x3e2818, sail: 0xe8e0cc, rope: 0xc0a878, iron: 0x6a6e74,
+  darkiron: 0x2e2e30, bronze: 0xb88a3a, fire: 0xff8a2a, skin: 0xc89066, cargo: 0x9a7a4a, clay: 0xa8583a,
+};
+/** Hull colours, as the game's procedural ships had them. */
+const SHIP_HULL = {
+  fishingShip: 0x8a6a42, transportShip: 0x7a5a38, tradeCog: 0x8a6a42, galley: 0x6a4a2a, warGalley: 0x5a3e24, galleon: 0x5a3e24,
+  fireShip: 0x5a3a24, fastFireShip: 0x4a3020, demolitionShip: 0x6a5a4a, heavyDemolitionShip: 0x5a4a3a, cannonGalleon: 0x4a3220,
+};
+
+function bakeShip(file, id) {
+  const model = load(file);
+  const names = model.bones.map((b) => b.name);
+  const has = (n) => names.includes(n);
+  const pal = { ...SHIP_KIT, hull: SHIP_HULL[id] ?? SHIP_KIT.hull };
+  const color = (p) => (p.mat === 'team' ? new THREE.Color(1, 1, 1) : lin(pal[p.mat] ?? pal.wood));
+  // riding the swell: a slow bob, pitch and roll (loops in 8 s)
+  const swell = (t, k = 1) => ({
+    hull: { py: 0.012 * k * Math.sin(2 * Math.PI * t / 4), rx: 0.018 * k * Math.sin(2 * Math.PI * t / 8 + 1), rz: 0.028 * k * Math.sin(2 * Math.PI * t / 8) },
+  });
+  const sail = (t, full) => (has('sail') ? { sail: { rx: (full ? -0.06 : -0.02) + 0.015 * Math.sin(2 * Math.PI * t / 2) } } : {});
+  // one stroke: the blades sweep aft through the water, then lift and swing forward
+  const oars = (t) => {
+    if (!has('oarsL')) return {};
+    const ph = 2 * Math.PI * t / 1.6;
+    const sweep = 0.35 * Math.sin(ph), lift = 0.075 * (1 - Math.cos(ph));
+    return { oarsL: { ry: sweep, rz: lift }, oarsR: { ry: -sweep, rz: -lift } };
+  };
+  const clips = {};
+  clips.idle = bakeClip(model.bones, names, (t) => eulPose({ ...swell(t), ...sail(t, false), ...(has('oarsL') ? { oarsL: { rz: 0.15 }, oarsR: { rz: -0.15 } } : {}) }), 8, 10, true);
+  clips.row = bakeClip(model.bones, names, (t) => eulPose({ ...swell(t, 1.4), ...sail(t, true), ...oars(t) }), 8, 20, true);
+  if (has('net')) {
+    // the net swung out over the side, lowered, and hauled back in (4 s)
+    clips.work = bakeClip(model.bones, ['net'], (t) => {
+      const u = t / 4;
+      return eulPose({ net: { ry: -0.9 * Math.sin(Math.PI * Math.min(1, u * 1.3)), rz: -0.4 * Math.sin(Math.PI * u) } });
+    }, 4, 15, true);
+  }
+  // loosing (arrows, a broadside, the fire siphon): the hull heels from the shock and rights itself
+  clips.attack = bakeClip(model.bones, ['hull'], (t) => {
+    const k = t < 0.1 ? t / 0.1 : Math.exp(-(t - 0.1) * 4) * Math.cos((t - 0.1) * 9);
+    return eulPose({ hull: { rz: 0.05 * k, py: -0.01 * Math.max(0, k) } });
+  }, 1, 30, false);
+  clips.die = bakeClip(model.bones, ['root'], (t) => {
+    const e = Math.min(1, t / 2.5);
+    const ee = e * e * (3 - 2 * e);
+    return eulPose({ root: { py: -0.9 * ee, rx: 0.25 * ee, rz: 0.5 * ee } });
+  }, 2.5, 20, false);
+  const meta = { kind: 'ship', attackHit: 0.1 };
+  return { id, height: model.meta.height, bones: model.bones.map((b) => ({ name: b.name, parent: b.parent ? names.indexOf(b.parent) : -1, pivot: b.pivot })),
+    parts: mergeParts(model, color), clips, meta };
+}
+
 // ------------------------------------------------------------------------------------------------ soldiers
 const SKINS = [0xe0b48c, 0xc89066, 0xa8704a, 0x7a4a2e, 0x5a3420];
 const SOLDIER_KIT = {
@@ -596,6 +650,8 @@ for (const f of fs.readdirSync(inDir)) {
   if (c) jobs.push([c[1], () => bakeRider(f, c[1])]);
   const a = f.match(/^animal_(\w+)\.json$/);
   if (a) jobs.push([a[1], () => bakeAnimal(f, a[1])]);
+  const sh = f.match(/^ship_(\w+)\.json$/);
+  if (sh) jobs.push([sh[1], () => bakeShip(f, sh[1])]);
   const g = f.match(/^siege_(\w+)\.json$/);
   if (g) jobs.push([g[1], () => (g[1] === 'tradeCart' ? bakeCart(f, g[1]) : bakeSiege(f, g[1]))]);
 }

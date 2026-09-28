@@ -209,6 +209,7 @@ function pickClips(rig: BakedRig, st: AnimState, carry: string | null, relic: bo
   if (kind === 'scout') return scoutClips(rig, st);
   if (kind === 'animal') return animalClips(rig, st);
   if (kind === 'siege') return siegeClips(rig, st);
+  if (kind === 'ship') return shipClips(rig, st);
   if (kind === 'soldier') return soldierClips(rig, st, relic);
   return villagerClips(rig, st, carry);
 }
@@ -259,6 +260,23 @@ function villagerClips(rig: BakedRig, st: AnimState, carry: string | null): Laye
   if (carry) push(walking ? 'carryWalk' : 'carryIdle', walking ? walkT : idleT);
   else if (tool) push((walking ? 'walk:' : 'idle:') + tool, walking ? walkT : idleT);
   else push(walking ? 'walk' : 'idle', walking ? walkT : idleT);
+  return out;
+}
+
+/** Ships: riding the swell, rowing (and a full sail) under way, casting the net, heeling as they shoot, sinking. */
+function shipClips(rig: BakedRig, st: AnimState): Layer[] {
+  const out: Layer[] = [];
+  const push = (name: string, t: number) => {
+    const c = clip(rig, name);
+    if (c) out.push([c, t]);
+  };
+  if (st.anim === 'die') {
+    push('die', st.t);
+    return out;
+  }
+  push(st.moving ? 'row' : 'idle', st.time + st.seed * 5);
+  if (st.anim === 'work' && !st.moving) push('work', st.t + st.seed);
+  if (st.anim === 'attack') push('attack', st.t * (rig.meta.attackHit / Math.max(0.1, st.attackDelay)));
   return out;
 }
 
