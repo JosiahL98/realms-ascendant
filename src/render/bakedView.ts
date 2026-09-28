@@ -149,7 +149,9 @@ export class BakedUnits {
       const part = rig.parts[k];
       const mesh = b.meshes[k];
       let show = true;
-      if (part.variant.startsWith('tool:')) show = !carry && st.tool === part.variant.slice(5);
+      // the tool is in hand while working, even with part of a load already gathered; on the way to a drop-off the
+      // load is carried instead
+      if (part.variant.startsWith('tool:')) show = (working || !carry) && st.tool === part.variant.slice(5);
       else if (part.variant.startsWith('carry:')) show = !working && carry === part.variant.slice(6);
       else if (part.variant === 'relic') show = relic;
       else if (part.variant === 'packed') show = st.packed;      // the trebuchet on its cart
