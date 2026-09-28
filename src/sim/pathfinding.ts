@@ -24,6 +24,13 @@ export class Pathfinder {
   private closed: Uint32Array;
   private gen = 1;
   private heap: MinHeap;
+  /**
+   * Tiles where units stand still (working, fighting, waiting), stamped for one search by a unit that got stuck in a
+   * crowd: A* makes them costly and the path is not straightened through them, so it goes round.
+   */
+  private crowd: Uint8Array;
+  private crowdOn = false;
+  private crowdTiles: number[] = [];
   /** Statistics */
   searches = 0;
   expanded = 0;
@@ -37,6 +44,29 @@ export class Pathfinder {
     this.seen = new Uint32Array(N);
     this.closed = new Uint32Array(N);
     this.heap = new MinHeap(4096);
+    this.crowd = new Uint8Array(N);
+  }
+
+  /** Marks the tiles of standing units (world positions) as crowded for the next search. */
+  setCrowd(points: number[]): void {
+    this.clearCrowd();
+    const n = this.map.n;
+    for (let i = 0; i < points.length; i += 2) {
+      const x = Math.floor(points[i]), z = Math.floor(points[i + 1]);
+      if (x < 0 || z < 0 || x >= n || z >= n) continue;
+      const k = z * n + x;
+      if (!this.crowd[k]) {
+        this.crowd[k] = 1;
+        this.crowdTiles.push(k);
+      }
+    }
+    this.crowdOn = this.crowdTiles.length > 0;
+  }
+
+  clearCrowd(): void {
+    for (const k of this.crowdTiles) this.crowd[k] = 0;
+    this.crowdTiles.length = 0;
+    this.crowdOn = false;
   }
 
   /** When true, passability is evaluated for ships. */
@@ -103,6 +133,7 @@ export class Pathfinder {
         // allow escaping from a blocked start region
         if (leftStart) return false;
       } else leftStart = true;
+      if (this.crowdOn && this.crowd[z * this.map.n + x] && (x !== ex || z !== ez)) return false;
     }
     return true;
   }
@@ -118,10 +149,12 @@ export class Pathfinder {
     const gx = (goal.x0 + goal.x1) / 2, gz = (goal.z0 + goal.z1) / 2;
     const isPoint = goal.x1 - goal.x0 < 1e-6 && goal.z1 - goal.z0 < 1e-6 && goal.range < 0.01;
 
-    // Fast path: direct line.
+    // Fast path: direct line (not when going round a crowd: the direct line is what was blocked).
     const cx = Math.min(Math.max(sx, goal.x0 - goal.range), goal.x1 + goal.range);
     const cz = Math.min(Math.max(sz, goal.z0 - goal.range), goal.z1 + goal.range);
-    if (isPoint) {
+    if (this.crowdOn) {
+      // go on to A*
+    } else if (isPoint) {
       if (this.pass(Math.floor(gx), Math.floor(gz), team) && this.lineClear(sx, sz, gx, gz, team)) {
         return { path: [gx, gz], reached: true };
       }
@@ -179,7 +212,7 @@ export class Pathfinder {
         if (d >= 4 && (!this.pass(x + DX[d], z, team) || !this.pass(x, z + DZ[d], team))) continue;
         const ni = nz * n + nx;
         if (this.closed[ni] === gen) continue;
-        const ng = gc + COST[d];
+        const ng = gc + COST[d] + (this.crowdOn && this.crowd[ni] ? 3 : 0);
         if (this.seen[ni] !== gen || ng < this.g[ni]) {
           this.seen[ni] = gen;
           this.g[ni] = ng;

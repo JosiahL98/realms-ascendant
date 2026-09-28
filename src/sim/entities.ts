@@ -62,6 +62,8 @@ export class Unit {
   navReachable = true;
   navCheckAt = 0;
   navCheckD = 0;
+  /** Until then, paths go round units standing still (set after getting stuck in a crowd). */
+  avoidCrowdUntil = 0;
 
   // Combat
   targetId = 0;

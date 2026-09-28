@@ -89,31 +89,211 @@ function faceTo(u: Unit, x: number, z: number): void {
 /* Navigation                                                               */
 /* ====================================================================== */
 
+/** The unit an order is aimed at (it is not steered round: it is where the unit is going). */
+function orderTarget(u: Unit): number {
+  const o = u.order as { target?: number };
+  return o.target ?? 0;
+}
+
+/**
+ * Steering round other units: a unit about to walk into another bears off to the side it can pass on, harder the
+ * closer it is. Units standing still (working, fighting, waiting) are walked round; one coming the other way is passed
+ * on the right (both bear right, so they miss); one walking the same way is followed rather than shoved.
+ * Returns the new heading (a unit vector).
+ */
+function steer(game: Game, u: Unit, dx: number, dz: number): [number, number] {
+  const r = u.radius;
+  const lx = -dz, lz = dx;   // the unit's left
+  const naval = !!u.def.naval;
+  const target = orderTarget(u);
+  let ax = 0, az = 0;
+  game.spatial.query(u.x, u.z, r + 1.4, (v) => {
+    if (v === u || !v.alive || v.garrisonedIn || !!v.def.naval !== naval || v.id === target) return;
+    const rx = v.x - u.x, rz = v.z - u.z;
+    const rr = r + v.radius;
+    const along = rx * dx + rz * dz;
+    if (along < -0.05 || along > rr + 0.7) return;
+    const lat = rx * lx + rz * lz;
+    if (Math.abs(lat) >= rr * 0.98) return;
+    let side = lat > 0 ? -1 : 1;   // it is on the left: bear right, and the other way round
+    if (v.moving) {
+      const same = Math.sin(v.facing) * dx + Math.cos(v.facing) * dz;
+      if (same > 0.5) return;       // walking the same way: follow
+      if (same < -0.5) side = -1;   // coming the other way: keep right
+    } else if (Math.abs(lat) < 0.08) {
+      side = u.id % 2 === 1 ? 1 : -1;   // standing dead ahead: either side
+    }
+    const near = 1 - Math.max(0, along - rr * 0.5) / (rr * 0.5 + 0.7);
+    const w = (0.35 + 0.65 * near) * (1 - (Math.abs(lat) / rr) * 0.6);
+    ax += lx * side * w;
+    az += lz * side * w;
+  });
+  if (ax === 0 && az === 0) return [dx, dz];
+  let nx = dx + ax * 1.4, nz = dz + az * 1.4;
+  // never turn back on the path: at most a right angle
+  const fwd = nx * dx + nz * dz;
+  if (fwd < 0) {
+    nx -= dx * fwd;
+    nz -= dz * fwd;
+  }
+  const l = Math.hypot(nx, nz);
+  return l < 1e-6 ? [dx, dz] : [nx / l, nz / l];
+}
+
+/** A walking unit turns at most so far a tick, so bearing round others does not make it twitch. */
+function turnToward(from: number, to: number, max = 0.3): number {
+  let d = to - from;
+  d -= Math.round(d / (Math.PI * 2)) * Math.PI * 2;
+  return Math.abs(d) <= max ? to : from + Math.sign(d) * max;
+}
+
+/** Moves to (x, z) if the unit may stand there, or slides along whichever axis is free. False if neither. */
+function moveTo(u: Unit, x: number, z: number, canStand: (x: number, z: number) => boolean): boolean {
+  if (canStand(x, z)) {
+    u.x = x;
+    u.z = z;
+    return true;
+  }
+  const mx = Math.abs(x - u.x), mz = Math.abs(z - u.z);
+  const order = mx >= mz ? ['x', 'z'] : ['z', 'x'];
+  for (const axis of order) {
+    if (axis === 'x' && mx > 1e-4 && canStand(x, u.z)) {
+      u.x = x;
+      return true;
+    }
+    if (axis === 'z' && mz > 1e-4 && canStand(u.x, z)) {
+      u.z = z;
+      return true;
+    }
+  }
+  return false;
+}
+
 function followPath(game: Game, u: Unit, dt: number): void {
   let step = u.stats.speed * dt;
   if (u.relicId) step *= 0.9;
+  const team = game.teamOf[u.owner];
+  const pf = game.pathfinder;   // (its domain, land or water, was set by navigate)
+  // a unit never walks into a blocked tile (tree, mine, building, water); one already inside may walk out
+  const startBlocked = !pf.isPassable(u.x, u.z, team);
+  const canStand = (x: number, z: number) => startBlocked || pf.isPassable(x, z, team);
+  let steered = false;
   while (step > 1e-6 && u.pathIdx * 2 < u.path.length) {
     const wx = u.path[u.pathIdx * 2], wz = u.path[u.pathIdx * 2 + 1];
-    const dx = wx - u.x, dz = wz - u.z;
-    const d = Math.hypot(dx, dz);
+    const ddx = wx - u.x, ddz = wz - u.z;
+    const d = Math.hypot(ddx, ddz);
     if (d < 1e-4) {
       u.pathIdx++;
       continue;
     }
-    u.facing = Math.atan2(dx, dz);
+    const dx = ddx / d, dz = ddz / d;
+    const len = Math.min(step, d);
+    if (!steered) {
+      steered = true;
+      let [sx, sz] = steer(game, u, dx, dz);
+      let bear = sx * dx + sz * dz < 0.999;
+      if (bear && !canStand(u.x + sx * len, u.z + sz * len)) {
+        // no room on that side (a tree or water beside): try the other
+        const f = sx * dx + sz * dz;
+        const ox = 2 * f * dx - sx, oz = 2 * f * dz - sz;
+        if (canStand(u.x + ox * len, u.z + oz * len)) [sx, sz] = [ox, oz];
+        else bear = false;
+      }
+      if (bear && moveTo(u, u.x + sx * len, u.z + sz * len, canStand)) {
+        // bearing off round someone: that is this tick's move; a waypoint someone stands on counts as reached
+        // once close to it (unless it is the last one)
+        u.facing = turnToward(u.facing, Math.atan2(sx, sz));
+        if (d < u.radius + 0.1 && u.pathIdx * 2 + 2 < u.path.length) u.pathIdx++;
+        break;
+      }
+    }
+    u.facing = turnToward(u.facing, Math.atan2(dx, dz));
+    const nx = u.x + dx * len, nz = u.z + dz * len;
+    if (!moveTo(u, nx, nz, canStand)) {
+      // the way ahead is blocked (pushed off the path against a tree, say): plan again from here
+      u.path = [];
+      u.pathIdx = 0;
+      u.navGoalX = NaN;
+      u.repathAt = game.time;
+      break;
+    }
+    if (u.x !== nx || u.z !== nz) break;   // slid along an obstacle: that is this tick's move
     if (d <= step) {
       u.x = wx;
       u.z = wz;
-      step -= d;
       u.pathIdx++;
-    } else {
-      u.x += (dx / d) * step;
-      u.z += (dz / d) * step;
-      step = 0;
     }
+    step -= len;
   }
   u.moving = true;
   u.setAnim(u.carryAmount > 0 && u.def.gatherer ? 'carry' : 'walk', game.time);
+}
+
+/** Is a unit standing still (other than u) within reach of the point? */
+function occupied(game: Game, u: Unit, x: number, z: number): boolean {
+  let hit = false;
+  const naval = !!u.def.naval;
+  game.spatial.query(x, z, u.radius + 0.7, (v, d2) => {
+    if (hit || v === u || !v.alive || v.garrisonedIn || v.moving || !!v.def.naval !== naval) return;
+    const rr = (u.radius + v.radius) * 0.85;
+    if (d2 < rr * rr) hit = true;
+  });
+  return hit;
+}
+
+/**
+ * Where to stand to reach a rect (a tree, a mine, a building) or a point (a unit to strike) from `off` away: (bx, bz),
+ * the nearest place to the unit, unless someone already stands there; then the nearest free place round the target.
+ */
+function standSpot(game: Game, u: Unit, bx: number, bz: number, rect: Rect | null, gx: number, gz: number, off: number, team: number): [number, number] {
+  if (off <= 0 || !occupied(game, u, bx, bz)) return [bx, bz];
+  const pf = game.pathfinder;
+  let bestX = bx, bestZ = bz, bd = Infinity;
+  const consider = (x: number, z: number) => {
+    if (!pf.isPassable(x, z, team) || occupied(game, u, x, z)) return;
+    const d = Math.hypot(x - u.x, z - u.z);
+    if (d < bd) {
+      bd = d;
+      bestX = x;
+      bestZ = z;
+    }
+  };
+  if (rect) {
+    const w = rect.x1 - rect.x0, h = rect.z1 - rect.z0;
+    const per = 2 * (w + h);
+    const n = Math.max(8, Math.ceil(per / 0.3));
+    for (let k = 0; k < n; k++) {
+      let s = (k / n) * per;
+      if (s < w) consider(rect.x0 + s, rect.z0 - off);
+      else if ((s -= w) < h) consider(rect.x1 + off, rect.z0 + s);
+      else if ((s -= h) < w) consider(rect.x1 - s, rect.z1 + off);
+      else consider(rect.x0 - off, rect.z1 - (s - w));
+    }
+    // the corners, diagonally out
+    const dg = off * Math.SQRT1_2;
+    consider(rect.x0 - dg, rect.z0 - dg);
+    consider(rect.x1 + dg, rect.z0 - dg);
+    consider(rect.x1 + dg, rect.z1 + dg);
+    consider(rect.x0 - dg, rect.z1 + dg);
+  } else {
+    for (let k = 0; k < 16; k++) {
+      const a = (k / 16) * Math.PI * 2;
+      consider(gx + Math.cos(a) * off, gz + Math.sin(a) * off);
+    }
+  }
+  return [bestX, bestZ];
+}
+
+/** Positions (flat x, z) of units standing still near u, for planning a way round them. */
+function standingNear(game: Game, u: Unit, r: number): number[] {
+  const out: number[] = [];
+  const naval = !!u.def.naval;
+  const target = orderTarget(u);
+  game.spatial.query(u.x, u.z, r, (v) => {
+    if (v === u || !v.alive || v.garrisonedIn || v.moving || !!v.def.naval !== naval || v.id === target) return;
+    out.push(v.x, v.z);
+  });
+  return out;
 }
 
 function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, rect: Rect | null, dt: number): Nav {
@@ -161,7 +341,11 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
   const pf = game.pathfinder;
 
   if (goalChanged || pathDone) {
-    const direct = d < 14 && pf.lineClear(u.x, u.z, ax, az, team, d < 2 ? 0 : 0.18);
+    // someone may already stand where this unit would: find a free place round the target
+    if (rect) [ax, az] = standSpot(game, u, ax, az, rect, gx, gz, Math.min(range * 0.7, 0.45), team);
+    else if (range > 0.3 && d > 1e-4) [ax, az] = standSpot(game, u, ax, az, null, gx, gz, Math.min(range * 0.7, d), team);
+    const aroundCrowd = game.time < u.avoidCrowdUntil;
+    const direct = !aroundCrowd && d < 14 && pf.lineClear(u.x, u.z, ax, az, team, d < 2 ? 0 : 0.18);
     if (direct) {
       u.path = [ax, az];
       u.pathIdx = 0;
@@ -173,7 +357,9 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
       const goal = rect
         ? { x0: rect.x0, z0: rect.z0, x1: rect.x1, z1: rect.z1, range: Math.max(0, range) }
         : { x0: gx, z0: gz, x1: gx, z1: gz, range: Math.max(0, range - 0.5) };
+      if (aroundCrowd) pf.setCrowd(standingNear(game, u, 10));
       const res = pf.findPath(u.x, u.z, goal, team);
+      if (aroundCrowd) pf.clearCrowd();
       const dbg = (globalThis as unknown as { __pathStats?: Map<string, number> }).__pathStats;
       if (dbg) {
         const tgt = 'target' in u.order ? game.get((u.order as { target: number }).target) : undefined;
@@ -181,6 +367,11 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
         dbg.set(key, (dbg.get(key) ?? 0) + 1);
       }
       if (res.reached && res.path.length === 0) res.path = [ax, az];
+      else if (res.reached && (rect || range > 0.3)) {
+        // A* ends on a tile centre near the goal: go on to the chosen place to stand (someone may be on the centre)
+        const lx = res.path[res.path.length - 2], lz = res.path[res.path.length - 1];
+        if (Math.hypot(lx - ax, lz - az) > 0.05 && pf.lineClear(lx, lz, ax, az, team, 0)) res.path.push(ax, az);
+      }
       // unreachable and already standing at the closest reachable spot: give up now
       if (!res.reached) {
         const ex = res.path.length ? res.path[res.path.length - 2] : u.x, ez = res.path.length ? res.path[res.path.length - 1] : u.z;
@@ -217,11 +408,13 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
     if (game.time >= u.navCheckAt) {
       if (u.navCheckAt > 0 && u.navCheckD - d < 0.15) {
         u.stuckTime++;
-        if (u.stuckTime >= 2) {
+        if (u.stuckTime >= 1) {
+          // plan again, this time round the units standing in the way
           u.path = [];
           u.pathIdx = 0;
           u.navGoalX = NaN;
           u.repathAt = game.time;
+          u.avoidCrowdUntil = game.time + 6;
         }
         if (u.stuckTime >= 6) return 'failed';
       } else u.stuckTime = 0;
