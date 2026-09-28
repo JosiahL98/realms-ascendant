@@ -287,6 +287,64 @@ function standSpot(game: Game, u: Unit, bx: number, bz: number, rect: Rect | nul
   return [bestX, bestZ];
 }
 
+/** Largest enclosed area (tiles) a unit is lifted out of; anything bigger (a walled base) is left alone. */
+const POCKET_MAX = 60;
+
+/** The tiles connected to (tx, tz) (4-connected, as paths can go), or null if there are more than `max`. */
+function region(game: Game, tx: number, tz: number, team: number, max: number): Set<number> | null {
+  const pf = game.pathfinder, n = game.map.n;
+  const seen = new Set<number>([tz * n + tx]);
+  const stack = [tz * n + tx];
+  while (stack.length) {
+    const k = stack.pop()!;
+    const x = k % n, z = (k / n) | 0;
+    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const nx = x + dx, nz = z + dz;
+      if (nx < 0 || nz < 0 || nx >= n || nz >= n) continue;
+      const nk = nz * n + nx;
+      if (seen.has(nk) || !pf.isPassable(nx + 0.5, nz + 0.5, team)) continue;
+      seen.add(nk);
+      if (seen.size > max) return null;
+      stack.push(nk);
+    }
+  }
+  return seen;
+}
+
+/**
+ * A unit shut into a small pocket (a building put up across the way out of a clearing in a wood, or a yard between
+ * houses) steps out to the nearest open ground outside it. False if it is not in such a pocket.
+ */
+function escapePocket(game: Game, u: Unit, team: number): boolean {
+  const pf = game.pathfinder, n = game.map.n;
+  const tx = Math.floor(u.x), tz = Math.floor(u.z);
+  if (!pf.isPassable(u.x, u.z, team)) return false;
+  const pocket = region(game, tx, tz, team, POCKET_MAX);
+  if (!pocket) return false;
+  for (let r = 1; r <= 12; r++) {
+    let best = -1, bd = Infinity;
+    for (let dz = -r; dz <= r; dz++)
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        const x = tx + dx, z = tz + dz;
+        if (x < 0 || z < 0 || x >= n || z >= n || pocket.has(z * n + x) || !pf.isPassable(x + 0.5, z + 0.5, team)) continue;
+        const d = (x + 0.5 - u.x) ** 2 + (z + 0.5 - u.z) ** 2;
+        // open ground, not another pocket
+        if (d < bd && !region(game, x, z, team, POCKET_MAX)) {
+          bd = d;
+          best = z * n + x;
+        }
+      }
+    if (best >= 0) {
+      u.x = u.px = (best % n) + 0.5;
+      u.z = u.pz = ((best / n) | 0) + 0.5;
+      resetNav(u);
+      return true;
+    }
+  }
+  return false;
+}
+
 /** Positions (flat x, z) of units standing still near u, for planning a way round them. */
 function standingNear(game: Game, u: Unit, r: number): number[] {
   const out: number[] = [];
@@ -299,7 +357,12 @@ function standingNear(game: Game, u: Unit, r: number): number[] {
   return out;
 }
 
-function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, rect: Rect | null, dt: number): Nav {
+/**
+ * `resourceId`: set when walking to a resource to gather it. Only then is a search that finds no way remembered (for
+ * the team, for a while) and the resource passed over; every other trip (home with a load, to a building site, into
+ * battle) is planned afresh.
+ */
+function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, rect: Rect | null, dt: number, resourceId = 0): Nav {
   const d = rect ? distToRect(u.x, u.z, rect.x0, rect.z0, rect.x1, rect.z1) : Math.hypot(gx - u.x, gz - u.z);
   if (d <= range) {
     halt(u);
@@ -356,7 +419,7 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
       u.navGoalZ = gz;
       u.navGoalR = range;
       u.navReachable = true;
-    } else if (rect && game.isUnreachable(orderTarget(u), team)) {
+    } else if (resourceId && game.isUnreachable(resourceId, team)) {
       // this side already searched every way to it and found none (a tree deep in a wood, say)
       u.navFailed = 2;
       u.path = [];
@@ -371,8 +434,13 @@ function navigate(game: Game, u: Unit, gx: number, gz: number, range: number, re
       const res = pf.findPath(u.x, u.z, goal, team, maxNodes);
       if (aroundCrowd) pf.clearCrowd();
       game.spendPathNodes(pf.lastExpanded);
-      // a full search that found no way to a fixed target (resource, building): remember it for a while
-      if (!res.reached && !aroundCrowd && rect && pf.lastExpanded >= maxNodes) game.markUnreachable(orderTarget(u), team);
+      // the search ran out of ground almost at once: the unit is shut in (a building closed its way out)
+      if (!res.reached && pf.lastExpanded <= POCKET_MAX && escapePocket(game, u, team)) {
+        u.moving = false;
+        return 'moving';
+      }
+      // no way to the resource (the search covered all the ground it could, or all it was allowed): remember it
+      if (resourceId && !res.reached && !aroundCrowd) game.markUnreachable(resourceId, team);
       const dbg = (globalThis as unknown as { __pathStats?: Map<string, number> }).__pathStats;
       if (dbg) {
         const tgt = 'target' in u.order ? game.get((u.order as { target: number }).target) : undefined;
@@ -1082,8 +1150,10 @@ function returnResources(game: Game, u: Unit, dt: number): boolean {
     resetNav(u);
   }
   if (!b) {
+    // nowhere to take it (every drop-off lost): keep the load and stand ready for other work, e.g. building one
     halt(u);
-    u.setAnim('idle', game.time);
+    u.returning = false;
+    finishOrder(game, u);
     return false;
   }
   const s = navigate(game, u, b.x, b.z, u.radius + (u.def.naval ? 0.75 : 0.25), rectOf(b), dt);
@@ -1268,7 +1338,7 @@ function doGather(game: Game, u: Unit, o: Extract<Order, { t: 'gather' }>, dt: n
     resetNav(u);
     return;
   }
-  const nav = navigate(game, u, gx, gz, range, rect, dt);
+  const nav = navigate(game, u, gx, gz, range, rect, dt, t.kind === 'resource' ? t.id : 0);
   if (nav === 'moving') return;
   if (nav === 'failed') {
     const next = findNextResource(game, u, kind, t.x, t.z, t.id);
@@ -1347,7 +1417,7 @@ function hunt(game: Game, u: Unit, animal: Unit, dt: number): void {
   const d = Math.hypot(animal.x - u.x, animal.z - u.z) - u.radius - animal.radius;
   if (d > range) {
     u.attackWindup = -1;
-    const nav = navigate(game, u, animal.x, animal.z, range + u.radius + animal.radius - 0.02, null, dt);
+    const nav = navigate(game, u, animal.x, animal.z, range + u.radius + animal.radius - 0.02, null, dt, animal.id);
     if (nav === 'failed') finishOrder(game, u);
     return;
   }

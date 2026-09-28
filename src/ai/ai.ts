@@ -434,8 +434,10 @@ export class AIPlayer {
   private nearestRes(kind: GatherKind, x: number, z: number, maxD: number, filter?: (r: ResourceNode) => boolean): ResourceNode | null {
     let best: ResourceNode | null = null;
     let bd = maxD;
+    const team = this.game.teamOf[this.pid];
     for (const r of this.game.resources) {
       if (!r.alive || r.gather !== kind || r.amount <= 0 || r.type === 'relic') continue;
+      if (this.game.isUnreachable(r.id, team)) continue;   // our villagers found no way to it
       if (filter && !filter(r)) continue;
       const d = Math.hypot(r.x - x, r.z - z);
       if (d < bd) {
@@ -465,7 +467,8 @@ export class AIPlayer {
     const bx = this.baseX, bz = this.baseZ;
     if (k === 'food') {
       // sheep first
-      const sheep = this.myUnits.filter((s) => s.def.herdable && s.alive).sort((a, b) => Math.hypot(a.x - bx, a.z - bz) - Math.hypot(b.x - bx, b.z - bz))[0];
+      const team = g.teamOf[this.pid];
+      const sheep = this.myUnits.filter((s) => s.def.herdable && s.alive && !g.isUnreachable(s.id, team)).sort((a, b) => Math.hypot(a.x - bx, a.z - bz) - Math.hypot(b.x - bx, b.z - bz))[0];
       const carcass = this.nearestRes('herd', bx, bz, 12) ?? this.nearestRes('hunt', bx, bz, 12);
       if (carcass) return this.cmd({ c: 'gather', units: [u.id], target: carcass.id });
       if (sheep && Math.hypot(sheep.x - bx, sheep.z - bz) < 16) return this.cmd({ c: 'gather', units: [u.id], target: sheep.id });
@@ -473,7 +476,7 @@ export class AIPlayer {
       const berryAny = this.nearestRes('forage', bx, bz, 22);
       const foragers = this.vills.filter((v) => v.order.t === 'gather' && v.gatherKind === 'forage').length;
       const bushes = berryAny ? g.resources.filter((r) => r.alive && r.gather === 'forage' && Math.hypot(r.x - berryAny.x, r.z - berryAny.z) < 6).length : 0;
-      const berry = berryAny && foragers < bushes * 1.4 + 1 ? (g.findResource('forage', berryAny.x, berryAny.z, 6) ?? berryAny) : null;
+      const berry = berryAny && foragers < bushes * 1.4 + 1 ? (g.findResource('forage', berryAny.x, berryAny.z, 6, 0, 0, team) ?? berryAny) : null;
       if (berry) {
         if (this.dropoffNear('food', berry.x, berry.z, 5)) return this.cmd({ c: 'gather', units: [u.id], target: berry.id });
         if (!this.placedRecently('mill', 25) && this.p.canAfford(this.p.buildingCost('mill'))) {
@@ -487,7 +490,7 @@ export class AIPlayer {
       // deer / boar near a food drop-off
       if (this.p.age <= 1) {
         const hunters = this.vills.filter((v) => v.order.t === 'gather' && v.gatherKind === 'hunt').length;
-        const prey = g.units.filter((d) => d.alive && (d.def.animal === 'deer' || (d.def.animal === 'boar' && hunters >= 3)) && Math.hypot(d.x - bx, d.z - bz) < 20)
+        const prey = g.units.filter((d) => d.alive && (d.def.animal === 'deer' || (d.def.animal === 'boar' && hunters >= 3)) && Math.hypot(d.x - bx, d.z - bz) < 20 && !g.isUnreachable(d.id, team))
           .sort((a, b) => Math.hypot(a.x - bx, a.z - bz) - Math.hypot(b.x - bx, b.z - bz))[0];
         if (prey) {
           if (prey.def.animal === 'boar') {
@@ -528,7 +531,7 @@ export class AIPlayer {
       let bestTree: ResourceNode | null = null;
       let bd = Infinity;
       for (const c of camp) {
-        const t = g.findResource('wood', c.x, c.z, c.type === 'townCenter' ? 7 : 9);
+        const t = g.findResource('wood', c.x, c.z, c.type === 'townCenter' ? 7 : 9, 0, 0, g.teamOf[this.pid]);
         if (t) {
           const d = Math.hypot(t.x - c.x, t.z - c.z);
           if (d < bd) {
@@ -550,7 +553,7 @@ export class AIPlayer {
         }
       }
       if (bestTree) return this.cmd({ c: 'gather', units: [u.id], target: bestTree.id });
-      const any = g.findResource('wood', u.x, u.z, 45) ?? g.findResource('wood', bx, bz, 60);
+      const any = g.findResource('wood', u.x, u.z, 45, 0, 0, g.teamOf[this.pid]) ?? g.findResource('wood', bx, bz, 60, 0, 0, g.teamOf[this.pid]);
       return any ? this.cmd({ c: 'gather', units: [u.id], target: any.id }) : false;
     }
     // gold / stone
