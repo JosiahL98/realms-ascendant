@@ -253,9 +253,11 @@ body:has(#specboard) #scores { display: none; }
   #touch-controls { display: flex; }
   .topbtn, .mbtn, .mbtn.small { min-height: 44px; }
   #topbar .topbtn { min-height: 32px; }
-  #idlebtn { width: 44px; height: 44px; }
+  /* Touch layouts show Idle in the touch row, where it does not cover the minimap. */
+  #idlebtn { display: none; }
   .cbtn, .qi, .gu, .gi, #idlebtn { touch-action: manipulation; }
-  .cbtn { -webkit-touch-callout: none; }
+  /* Keep holds on command buttons from turning into browser pans, which cancel the touch. */
+  .cbtn { touch-action: none; -webkit-touch-callout: none; }
   #info .qi, #info .qi:first-child, #info .garr .gi { width: 44px; height: 44px; }
   #info .gu { width: 44px; height: 48px; background-size: 42px 42px; }
   .setup select, .setup input { min-height: 40px; font-size: 16px; }
