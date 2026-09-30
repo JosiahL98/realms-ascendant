@@ -71,7 +71,14 @@ try {
   const clearCommands = (page) => page.evaluate(() => { window.__inputCommands.length = 0; });
 
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 800 } });
-  const pc = await start(desktop);
+  const pc = await start(desktop, 62);
+  assert.equal(await pc.evaluate(() => {
+    const r = window.__session.renderer;
+    r.setZoom(1);
+    const minimum = r.zoom;
+    r.setZoom(40);
+    return minimum;
+  }), 28, 'Desktop retains its existing zoom range');
   await pc.evaluate(() => window.__session.select(window.__inputUnits));
   await pc.mouse.move(640, 350);
   for (const [key, signX, signZ] of [['w', -1, -1], ['a', -1, 1], ['s', 1, 1], ['d', 1, -1]]) {
@@ -99,7 +106,7 @@ try {
   await desktop.close();
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 1 });
-  const page = await start(mobile, 42);
+  const page = await start(mobile, 28);
   const cdp = await mobile.newCDPSession(page);
   const point = (x, y, id = 1) => ({ x, y, id, radiusX: 1, radiusY: 1, force: 1 });
   const touch = (type, points = []) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints: points });
@@ -212,6 +219,26 @@ try {
   check('Native two finger pinch zooms the map without accidental commands');
 
   await reset();
+  await touch('touchStart', [point(75, 250)]);
+  await touch('touchStart', [point(75, 250), point(315, 250, 2)]);
+  for (let step = 1; step <= 5; step++) {
+    await touch('touchMove', [point(75 + step * 20, 250), point(315 - step * 20, 250, 2)]);
+  }
+  await touch('touchEnd');
+  await settleTap();
+  assert.equal(await page.evaluate(() => window.__session.renderer.zoom), 10, 'Pinching inward reaches the new mobile overview limit');
+  assert.deepEqual(await commands(page), [], 'Zooming far out does not issue commands');
+  assert.deepEqual(await selection(page), [], 'Zooming far out does not select units');
+  mkdirSync('screenshots', { recursive: true });
+  await page.screenshot({ path: 'screenshots/mobile-zoomed-out.png' });
+  await page.setViewportSize({ width: 844, height: 390 });
+  await page.waitForFunction(() => window.__session.renderer.width === 844);
+  assert.equal(await page.evaluate(() => window.__session.renderer.zoom), 10, 'Rotation preserves the chosen wide zoom');
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => window.__session.renderer.width === 390);
+  check('Mobile pinch zoom reaches a much wider overview and survives rotation');
+
+  await reset();
   const mini = await page.locator('#minimap').boundingBox();
   assert.ok(mini && mini.width > 0 && mini.height > 0, 'Minimap is visible on mobile');
   const beforeMini = await camera(page);
@@ -230,12 +257,41 @@ try {
   await page.locator('#touch-cancel').tap();
   assert.deepEqual(await selection(page), [ownIds[0]], 'Cancelling Select mode preserves the current selection');
   assert.equal(await page.locator('#touch-select').getAttribute('aria-pressed'), 'false');
+  await tap((await unitPoints())[1]);
+  await settleTap();
+  assert.deepEqual(await selection(page), [ownIds[1]], 'A normal friendly-unit tap changes selection');
+  assert.deepEqual(await commands(page), [], 'Selecting a friendly unit does not issue an order');
+  await page.evaluate(() => {
+    window.__session.select([window.__inputUnits[0]]);
+    window.__session.hud.update(performance.now() + 150);
+  });
+  assert.equal(await page.locator('#touch-command').textContent(), 'Interact', 'Units get an Interact button with a distinct purpose');
   await page.locator('#touch-command').tap();
   await tap((await unitPoints())[1]);
   await settleTap();
-  assert.deepEqual(await selection(page), [ownIds[0]], 'Command mode does not replace selection with the friendly target');
-  assert.ok((await commands(page)).some((c) => c.c === 'move' && c.units.includes(ownIds[0])), 'Explicit Command orders movement to a friendly unit');
-  check('Select/Cancel preserves selection and Command can target friendly units');
+  assert.deepEqual(await selection(page), [ownIds[0]], 'Interact does not replace selection with the friendly target');
+  assert.ok((await commands(page)).some((c) => c.c === 'move' && c.units.includes(ownIds[0])), 'Interact orders movement to a friendly unit');
+  check('Select/Cancel preserves selection and Interact can target friendly units');
+
+  await clearCommands(page);
+  const rallyBuilding = await page.evaluate(() => {
+    const s = window.__session;
+    const b = s.game.buildings.find((b) => b.owner === s.local && b.type === 'townCenter');
+    s.select([b.id]);
+    s.hud.update(performance.now() + 150);
+    return b.id;
+  });
+  assert.equal(await page.locator('#touch-command').textContent(), 'Rally', 'Production buildings show the Rally action');
+  await page.locator('#touch-command').tap();
+  await tap(ground);
+  await settleTap();
+  assert.ok((await commands(page)).some((c) => c.c === 'rally' && c.buildings.includes(rallyBuilding)), 'Rally sets the selected building\'s gather point');
+  assert.deepEqual(await selection(page), [rallyBuilding], 'Rally keeps the building selected');
+  await page.evaluate(() => {
+    window.__session.select([window.__inputUnits[0]]);
+    window.__session.hud.update(performance.now() + 150);
+  });
+  check('The contextual Rally button sets production building gather points');
 
   await clearCommands(page);
   await page.getByRole('button', { name: 'Build Economic Building', exact: true }).tap();
@@ -278,7 +334,7 @@ try {
 
   // Do not carry CDP's cancelled touch sequence across emulated device changes.
   await page.close();
-  const layoutPage = await start(mobile, 42);
+  const layoutPage = await start(mobile, 28);
   for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 568, height: 320 }]) {
     await layoutPage.setViewportSize(viewport);
     await layoutPage.evaluate(() => {

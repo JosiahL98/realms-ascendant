@@ -39,6 +39,8 @@ export class Renderer {
   camZ = 0;
   /** Pixels per world unit. */
   zoom = 62;
+  /** Touch screens need a wider overview than the desktop zoom limit allows. */
+  readonly minZoom = matchMedia('(pointer: coarse)').matches ? 10 : 28;
   width = 1;
   height = 1;
   private fogTex: THREE.DataTexture;
@@ -144,7 +146,7 @@ export class Renderer {
   }
 
   setZoom(z: number): void {
-    this.zoom = Math.max(28, Math.min(120, z));
+    this.zoom = Math.max(this.minZoom, Math.min(120, z));
     this.updateCamera();
   }
 

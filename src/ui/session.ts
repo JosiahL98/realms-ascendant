@@ -86,10 +86,10 @@ export class Session {
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
     this.octx = this.overlay.getContext('2d')!;
     this.renderer = new Renderer(this.canvas, this.game, this.local, assets);
-    // Start phones with enough terrain visible to see the town and nearby units.
+    // Start touch devices with a wider view of the town and surrounding terrain.
     // Restoring a save below still restores the player's chosen zoom.
-    if (matchMedia('(pointer: coarse)').matches && Math.min(root.clientWidth, root.clientHeight) <= 700) {
-      this.renderer.setZoom(42);
+    if (matchMedia('(pointer: coarse)').matches) {
+      this.renderer.setZoom(28);
     }
     this.hud = new Hud(this, root.querySelector('#hud') as HTMLElement);
     this.minimap = new Minimap(this, this.hud.minimapCanvas);

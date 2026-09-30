@@ -59,7 +59,7 @@ export class Hud {
       <div id="touch-controls" role="group" aria-label="Touch controls">
         <div id="touch-hint" role="status">Drag to pan · Pinch to zoom · Help for gestures</div>
         <button class="touchbtn" id="touch-select" type="button" aria-pressed="false" aria-label="Select units with the next drag">Select</button>
-        <button class="touchbtn" id="touch-command" type="button" aria-pressed="false" aria-label="Command the selection with the next tap" disabled>Command</button>
+        <button class="touchbtn" id="touch-command" type="button" aria-pressed="false" aria-label="Interact with a friendly unit or building instead of selecting it" disabled>Interact</button>
         <button class="touchbtn" id="touch-rotate" type="button" hidden aria-label="Rotate gate">Rotate</button>
         <button class="touchbtn" id="touch-cancel" type="button" disabled>Deselect</button>
       </div>
@@ -195,8 +195,16 @@ export class Hud {
     }
     const hasSelection = s.selection.length > 0;
     const ownSelection = s.selectedEntities().filter((e) => e.owner === s.local);
-    const canCommand = !s.spectator && !s.game.players[s.local].defeated && ownSelection.length > 0;
-    (this.root.querySelector('#touch-command') as HTMLButtonElement).disabled = !canCommand;
+    const hasUnits = ownSelection.some((e) => e.kind === 'unit');
+    const canRally = ownSelection.some((e) => e.kind === 'building' && (!!e.def.trains?.length || e.type === 'townCenter'));
+    const canCommand = !s.spectator && !s.game.players[s.local].defeated && (hasUnits || canRally);
+    const command = this.root.querySelector('#touch-command') as HTMLButtonElement;
+    command.disabled = !canCommand;
+    command.textContent = !hasUnits && canRally ? 'Rally' : 'Interact';
+    const commandHelp = !hasUnits && canRally ? 'Set the selected building\'s rally point with the next tap'
+      : 'Interact with a friendly unit or building instead of selecting it';
+    command.setAttribute('aria-label', commandHelp);
+    command.title = commandHelp;
     (this.root.querySelector('#touch-rotate') as HTMLButtonElement).hidden = !s.placing || !BUILDINGS[s.placing.type].gate || s.spectator;
     const hasAction = mode !== 'auto' || !!s.placing || !!s.targeting || s.panelMode !== 'main';
     const cancel = this.root.querySelector('#touch-cancel') as HTMLButtonElement;
@@ -204,11 +212,12 @@ export class Hud {
     cancel.disabled = !hasSelection && !hasAction;
     let hint = 'Drag to pan · Pinch to zoom · Help for gestures';
     if (s.placing) hint = BUILDINGS[s.placing.type].wall ? 'Drag to draw a wall · Cancel to go back' : `Tap to place ${BUILDINGS[s.placing.type].name}`;
-    else if (s.targeting || mode === 'command') hint = 'Tap a target to command · Cancel to go back';
+    else if (mode === 'command') hint = !hasUnits && canRally ? 'Tap where new units should gather' : 'Tap a friendly target to interact with it';
+    else if (s.targeting) hint = 'Tap a target to command · Cancel to go back';
     else if (mode === 'select') hint = 'Drag a box around units to select';
-    else if (canCommand) hint = ownSelection.some((e) => e.kind === 'unit')
+    else if (canCommand) hint = hasUnits
       ? 'Tap ground, resources or enemies to command'
-      : 'Use Command, then tap to set a gather point';
+      : 'Use Rally, then tap where new units should gather';
     const hintEl = this.root.querySelector('#touch-hint')!;
     if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
@@ -707,7 +716,7 @@ export class Hud {
   showHelp(): void {
     const m = this.openModal(`<h2>How to Play</h2><div class="help" style="max-width:760px">
       <p><b>Goal:</b> gather resources, grow your population, advance through the four ages, and destroy every enemy unit and building — or build a Wonder and defend it.</p>
-      <p><b>Touch:</b> drag one finger to pan; pinch to zoom. Tap a unit or building to select it. To select a group, double-tap, hold the second tap and drag a box, or tap <b>Select</b> and then drag. Tap ground, resources or enemies to command selected units. For a command on a friendly target or to set a building's gather point, tap <b>Command</b> first, then the target. Tap the minimap to jump across the map.</p>
+      <p><b>Touch:</b> drag one finger to pan; pinch to zoom. Tap a unit or building to select it. To select a group, double-tap, hold the second tap and drag a box, or tap <b>Select</b> and then drag. Tap ground, resources or enemies to command selected units. Tapping your own unit or building selects it; use <b>Interact</b> first to garrison, repair, trade or work there instead. With a production building selected, use <b>Rally</b> and tap where new units should gather. Tap the minimap to jump across the map.</p>
       <p><b>Touch building:</b> select villagers, tap a Build button, choose a building, then tap the map to place it. Drag to lay walls; tap <b>Rotate</b> to turn a gate. <b>Cancel</b> leaves the current action; <b>Deselect</b> clears your selection. Tap an item in a building's training queue to cancel it.</p>
       <p><b>Mouse:</b> Left-click to select, drag to box-select, double-click to select all of a type on screen. Right-click to move, attack, gather, build, repair or garrison depending on what you click. Hold <kbd>Shift</kbd> to queue orders or to place several buildings. Drag walls to draw a line.</p>
       <p><b>Camera:</b> <kbd>W A S D</kbd> or move the mouse to the screen edge; middle-drag to pan; mouse wheel to zoom; click the minimap.</p>
