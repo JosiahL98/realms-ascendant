@@ -478,35 +478,81 @@ export function generateMap(game: Game): void {
   ensureConnectivity(game, startList);
 }
 
-/** A connected network with loops, rather than just the minimum links between bases. */
+/** Irregular woodland trails with alternate routes around their junctions. */
 function forestTrails(n: number, seed: number, starts: { x: number; z: number }[]): Uint8Array {
   const trails = new Uint8Array(n * n);
   const rng = new RNG(seed ^ 0x5f3759df);
-  const cells = Math.max(3, Math.round((n - 16) / 26));
-  const spacing = (n - 16) / cells;
-  const junctions: { x: number; z: number }[][] = [];
-  for (let row = 0; row <= cells; row++) {
-    const nodes: { x: number; z: number }[] = [];
-    for (let col = 0; col <= cells; col++) {
-      nodes.push({
-        x: Math.max(6, Math.min(n - 7, 8 + col * spacing + rng.range(-0.2, 0.2) * spacing)),
-        z: Math.max(6, Math.min(n - 7, 8 + row * spacing + rng.range(-0.2, 0.2) * spacing)),
-      });
+  const detail = new Noise2D(seed ^ 0x71ac93);
+  const nodes: { x: number; z: number }[] = [];
+  const count = Math.max(18, Math.round(n * n / 580));
+  const minGap = Math.min(16, n / 7);
+  // Scatter junctions freely, without rows, columns or repeating cell shapes.
+  for (let attempt = 0; attempt < count * 200 && nodes.length < count; attempt++) {
+    const point = { x: rng.range(8, n - 8), z: rng.range(8, n - 8) };
+    if (nodes.every((other) => Math.hypot(point.x - other.x, point.z - other.z) >= minGap)) nodes.push(point);
+  }
+  const neighbors = nodes.map(() => new Set<number>());
+  const link = (a: number, b: number): void => {
+    neighbors[a].add(b);
+    neighbors[b].add(a);
+  };
+  // A Gabriel graph connects nearby points when the circle between them is
+  // empty. It spans the scattered points without imposing compass directions.
+  for (let a = 0; a < nodes.length; a++) {
+    for (let b = a + 1; b < nodes.length; b++) {
+      const p = nodes[a], q = nodes[b];
+      if (!nodes.some((r, i) => i !== a && i !== b && (r.x - p.x) * (r.x - q.x) + (r.z - p.z) * (r.z - q.z) < 0)) link(a, b);
     }
-    junctions.push(nodes);
+  }
+  // Add local bypasses wherever losing one junction would split the network.
+  // This keeps flanking routes without outlining every grove with a grid.
+  for (let blocked = 0; blocked < nodes.length; blocked++) {
+    const component = new Int32Array(nodes.length).fill(-1);
+    component[blocked] = -2;
+    let groups = 0;
+    for (let start = 0; start < nodes.length; start++) {
+      if (component[start] !== -1) continue;
+      const queue = [start];
+      component[start] = groups;
+      for (let i = 0; i < queue.length; i++) {
+        for (const next of neighbors[queue[i]]) {
+          if (component[next] !== -1) continue;
+          component[next] = groups;
+          queue.push(next);
+        }
+      }
+      groups++;
+    }
+    while (groups > 1) {
+      let bestA = -1, bestB = -1, bestDistance = Infinity;
+      for (let a = 0; a < nodes.length; a++) {
+        if (a === blocked) continue;
+        for (let b = a + 1; b < nodes.length; b++) {
+          if (b === blocked || component[a] === component[b]) continue;
+          const distance = Math.hypot(nodes[a].x - nodes[b].x, nodes[a].z - nodes[b].z);
+          if (distance < bestDistance) { bestA = a; bestB = b; bestDistance = distance; }
+        }
+      }
+      link(bestA, bestB);
+      const from = component[bestB], to = component[bestA];
+      for (let i = 0; i < component.length; i++) if (component[i] === from) component[i] = to;
+      groups--;
+    }
   }
   const connect = (a: { x: number; z: number }, b: { x: number; z: number }): void => {
     const dx = b.x - a.x, dz = b.z - a.z;
     const length = Math.hypot(dx, dz);
     if (length < 0.01) return;
-    const bend = rng.range(-0.15, 0.15) * length;
-    const radius = rng.range(2.1, 2.8);
-    const steps = Math.ceil(length * 2);
+    const bend = rng.range(-0.28, 0.28) * length;
+    const bend2 = rng.range(-0.12, 0.12) * length;
+    const width = rng.range(2.1, 2.8);
+    const steps = Math.ceil(length * 3);
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
-      const offset = Math.sin(Math.PI * t) * bend;
+      const offset = Math.sin(Math.PI * t) * bend + Math.sin(2 * Math.PI * t) * bend2;
       const cx = a.x + dx * t - dz / length * offset;
       const cz = a.z + dz * t + dx / length * offset;
+      const radius = Math.max(1.9, width + detail.noise2(cx / 9, cz / 9) * 0.7);
       for (let z = Math.max(3, Math.floor(cz - radius)); z <= Math.min(n - 4, Math.ceil(cz + radius)); z++) {
         for (let x = Math.max(3, Math.floor(cx - radius)); x <= Math.min(n - 4, Math.ceil(cx + radius)); x++) {
           if (Math.hypot(x + 0.5 - cx, z + 0.5 - cz) <= radius) trails[z * n + x] = 1;
@@ -514,15 +560,8 @@ function forestTrails(n: number, seed: number, starts: { x: number; z: number }[
       }
     }
   };
-  // Every cell has a circuit around it, providing a bypass if one trail is walled.
-  for (let row = 0; row <= cells; row++) {
-    for (let col = 0; col <= cells; col++) {
-      if (col < cells) connect(junctions[row][col], junctions[row][col + 1]);
-      if (row < cells) connect(junctions[row][col], junctions[row + 1][col]);
-    }
-  }
+  for (let a = 0; a < nodes.length; a++) for (const b of neighbors[a]) if (a < b) connect(nodes[a], nodes[b]);
   // Give each base several approaches in different directions, not one entrance.
-  const nodes = junctions.flat();
   for (const start of starts) {
     const nearest = [...nodes].sort((a, b) => Math.hypot(a.x - start.x, a.z - start.z) - Math.hypot(b.x - start.x, b.z - start.z));
     const angles: number[] = [];
