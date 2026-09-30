@@ -8,7 +8,8 @@ import { techAvailable } from '../sim/buildingAI';
 import { buildingIcon, civEmblem, glyphIcon, techIcon, unitIcon } from './icons';
 import type { Session } from './session';
 
-export const GRID_KEYS = ['Q', 'W', 'E', 'R', 'T', 'A', 'S', 'D', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
+// WASD is reserved for camera movement, including while units are selected.
+export const GRID_KEYS = ['Q', 'Y', 'E', 'R', 'T', 'U', 'I', 'O', 'F', 'G', 'Z', 'X', 'C', 'V', 'B'];
 
 export interface CmdButton {
   slot: number;

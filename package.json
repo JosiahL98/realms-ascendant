@@ -9,7 +9,9 @@
     "typecheck": "tsc --noEmit -p .",
     "simtest": "tsx tools/simtest.ts",
     "savetest": "tsx tools/savetest.ts",
-    "shot": "node tools/screenshot.mjs"
+    "foresttest": "tsx tools/foresttest.ts",
+    "shot": "node tools/screenshot.mjs",
+    "inputtest": "node tools/inputtest.mjs"
   },
   "keywords": [],
   "author": "",

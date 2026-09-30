@@ -17,7 +17,7 @@ export class Minimap {
   private H = 300;
   private pad = 6;
   private flashes: { x: number; z: number; t: number }[] = [];
-  private dragging = false;
+  private dragPointer: number | null = null;
 
   constructor(s: Session, c: HTMLCanvasElement) {
     this.s = s;
@@ -29,11 +29,29 @@ export class Minimap {
     this.fog = document.createElement('canvas');
     this.fog.width = this.fog.height = n;
     this.fogData = this.fog.getContext('2d')!.createImageData(n, n);
-    c.addEventListener('mousedown', this.onDown);
-    window.addEventListener('mousemove', this.onMove);
-    window.addEventListener('mouseup', this.onUp);
-    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('pointerdown', this.onDown);
+    c.addEventListener('pointermove', this.onMove);
+    c.addEventListener('pointerup', this.onUp);
+    c.addEventListener('pointercancel', this.onUp);
+    c.addEventListener('lostpointercapture', this.onUp);
+    c.addEventListener('contextmenu', this.onContextMenu);
+    window.addEventListener('blur', this.cancelDrag);
+    window.addEventListener('resize', this.cancelDrag);
   }
+
+  dispose(): void {
+    this.cancelDrag();
+    this.c.removeEventListener('pointerdown', this.onDown);
+    this.c.removeEventListener('pointermove', this.onMove);
+    this.c.removeEventListener('pointerup', this.onUp);
+    this.c.removeEventListener('pointercancel', this.onUp);
+    this.c.removeEventListener('lostpointercapture', this.onUp);
+    this.c.removeEventListener('contextmenu', this.onContextMenu);
+    window.removeEventListener('blur', this.cancelDrag);
+    window.removeEventListener('resize', this.cancelDrag);
+  }
+
+  private onContextMenu = (e: Event): void => e.preventDefault();
 
   private get sx(): number {
     return (this.W / 2 - this.pad) / this.s.game.map.n;
@@ -57,23 +75,37 @@ export class Minimap {
     return this.toWorld(mx, my);
   }
 
-  private onDown = (e: MouseEvent): void => {
+  private onDown = (e: PointerEvent): void => {
+    if (this.s.hud.isModalOpen() || this.dragPointer !== null) return;
+    e.preventDefault();
     e.stopPropagation();
     const p = this.eventPos(e);
     if (e.button === 0) {
-      this.dragging = true;
+      this.dragPointer = e.pointerId;
+      this.c.setPointerCapture(e.pointerId);
       this.s.renderer.centerOn(p.x, p.z);
     } else if (e.button === 2) {
       this.s.input.commandAtGround(p.x, p.z, e.shiftKey);
     }
   };
-  private onMove = (e: MouseEvent): void => {
-    if (!this.dragging) return;
+  private onMove = (e: PointerEvent): void => {
+    if (this.dragPointer !== e.pointerId) return;
+    if (this.s.hud.isModalOpen()) {
+      this.cancelDrag();
+      return;
+    }
+    e.preventDefault();
     const p = this.eventPos(e);
     this.s.renderer.centerOn(p.x, p.z);
   };
-  private onUp = (): void => {
-    this.dragging = false;
+  private onUp = (e: PointerEvent): void => {
+    if (this.dragPointer === e.pointerId) this.cancelDrag();
+  };
+
+  private cancelDrag = (): void => {
+    const id = this.dragPointer;
+    this.dragPointer = null;
+    if (id !== null && this.c.hasPointerCapture(id)) this.c.releasePointerCapture(id);
   };
 
   flash(x: number, z: number): void {

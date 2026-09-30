@@ -7,6 +7,7 @@ import { PLAYER_COLORS } from '../sim/player';
 import { civEmblem, unitIcon } from './icons';
 import type { AudioSys } from '../audio/audio';
 import { deleteSave, listSaves, saveListHtml, type SaveMeta } from './saves';
+import { GRID_KEYS } from './commandPanel';
 
 const dataUri = (s: string) => 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(s);
 
@@ -75,7 +76,7 @@ export class Menus {
   private frame(inner: string): HTMLElement {
     this.root.innerHTML = `<div id="menu-root"><div class="menu-bg"></div><div class="menu-inner">${inner}</div></div>`;
     const el = this.root.querySelector('#menu-root') as HTMLElement;
-    el.addEventListener('mousedown', () => this.audio.unlock());
+    el.addEventListener('pointerdown', () => this.audio.unlock());
     return el;
   }
 
@@ -113,13 +114,14 @@ export class Menus {
   showHelp(): void {
     const el = this.frame(`<h2 style="font-family:Cinzel;color:#f2d98c;text-align:center">How to Play</h2><div class="box wood trim help" style="padding:18px 24px;border-radius:6px">
       <p>Realms Ascendant plays like the classic real-time strategy games of old. You begin in the <b>Dark Age</b> with a Town Center, a few villagers and a scout.</p>
-      <p><b>Gather.</b> Select villagers and right-click sheep, berries, trees, gold or stone. Villagers carry their load to the nearest drop-off: the Town Center, a Mill (food), Lumber Camp (wood) or Mining Camp (gold and stone). Keep your Town Center busy training villagers!</p>
-      <p><b>Build.</b> Select villagers and use the Build buttons (<kbd>Q</kbd> economic, <kbd>W</kbd> military). Houses raise your population limit by 5. Farms need a Mill and are reseeded automatically.</p>
+      <p><b>Gather.</b> Select villagers and right-click sheep, berries, trees, gold or stone (tap the resource on touch screens). Villagers carry their load to the nearest drop-off: the Town Center, a Mill (food), Lumber Camp (wood) or Mining Camp (gold and stone). Keep your Town Center busy training villagers!</p>
+      <p><b>Build.</b> Select villagers and use the Build buttons (<kbd>${GRID_KEYS[0]}</kbd> economic, <kbd>${GRID_KEYS[1]}</kbd> military). Houses raise your population limit by 5. Farms need a Mill and are reseeded automatically.</p>
       <p><b>Advance.</b> At the Town Center, research the next age once you own two buildings of your current age. Each age unlocks stronger units, buildings and technologies. In the Castle Age you can build a Castle to train your realm's unique unit.</p>
       <p><b>Fight.</b> Spearmen counter cavalry, cavalry counters archers, archers counter infantry, skirmishers counter archers, rams and trebuchets destroy buildings. Priests heal and convert, and carry relics to your Temple for a steady income of gold.</p>
       <p><b>Win</b> by destroying all enemy units and buildings, or by building a Wonder and defending it for 600 seconds.</p>
       <p><b>Saving:</b> save and load from the in-game Menu (<kbd>F10</kbd>) or load from the main menu. The game also saves itself every five minutes of play (the Autosave). Saves are kept in this browser.</p>
-      <p><b>Controls:</b> left-click/drag to select, right-click to command, <kbd>Shift</kbd> to queue, arrow keys or screen edges to scroll, wheel to zoom, <kbd>H</kbd> Town Center, <kbd>.</kbd> idle villager, <kbd>Space</kbd> last alert, <kbd>Ctrl+1-9</kbd> groups, <kbd>F3</kbd> pause, <kbd>F10</kbd> menu. Command buttons use the grid <kbd>Q W E R T</kbd> / <kbd>A S D F G</kbd> / <kbd>Z X C V B</kbd>.</p>
+      <p><b>Touch controls:</b> drag one finger to pan and pinch to zoom. Tap a unit or building to select it. Double-tap, hold the second tap and drag to select a group, or tap <b>Select</b> and then drag a box. Tap ground, resources or enemies to command selected units. Use <b>Command</b> before tapping a friendly target or to set a building's gather point. Tap <b>Cancel</b> to leave an action, or <b>Deselect</b> to clear the selection. After choosing a building, tap the map to place it; drag to draw walls and use <b>Rotate</b> for gates.</p>
+      <p><b>Desktop controls:</b> left-click/drag to select, right-click to command, <kbd>Shift</kbd> to queue, <kbd>W A S D</kbd> or screen edges to scroll, wheel to zoom, <kbd>H</kbd> Town Center, <kbd>.</kbd> idle villager, <kbd>Space</kbd> last alert, <kbd>Ctrl+1-9</kbd> groups, <kbd>F3</kbd> pause, <kbd>F10</kbd> menu. Command buttons use the grid <kbd>${GRID_KEYS.slice(0, 5).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(5, 10).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(10).join(' ')}</kbd>.</p>
       </div><div class="menu-buttons" style="margin-top:16px"><button class="mbtn" data-a="back">Back</button></div>`);
     (el.querySelector('[data-a=back]') as HTMLElement).addEventListener('click', () => this.showMain());
   }

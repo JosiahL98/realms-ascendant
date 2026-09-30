@@ -68,6 +68,7 @@ export class Session {
   onLoadGame: ((id: string) => void) | null = null;
   private nextAutosave = AUTOSAVE_EVERY;
   private saving = false;
+  private resizeObserver: ResizeObserver;
 
   /** `restore`: a saved game to go on with, instead of a new one from `setup`. */
   constructor(root: HTMLElement, setup: GameSetup, makeAI: (game: Game, pid: number) => AIController | null, onExit: () => void, audio: AudioSys,
@@ -85,6 +86,11 @@ export class Session {
     this.overlay = root.querySelector('#overlay') as HTMLCanvasElement;
     this.octx = this.overlay.getContext('2d')!;
     this.renderer = new Renderer(this.canvas, this.game, this.local, assets);
+    // Start phones with enough terrain visible to see the town and nearby units.
+    // Restoring a save below still restores the player's chosen zoom.
+    if (matchMedia('(pointer: coarse)').matches && Math.min(root.clientWidth, root.clientHeight) <= 700) {
+      this.renderer.setZoom(42);
+    }
     this.hud = new Hud(this, root.querySelector('#hud') as HTMLElement);
     this.minimap = new Minimap(this, this.hud.minimapCanvas);
     this.input = new Input(this);
@@ -103,6 +109,9 @@ export class Session {
     } else if (tc) this.renderer.centerOn(tc.x + 1, tc.z + 1);
     if (restore) this.restoreView(restore.view);
     this.resize();
+    // Mobile browser chrome can resize the dynamic viewport without a window resize.
+    this.resizeObserver = new ResizeObserver(this.resize);
+    this.resizeObserver.observe(root);
     window.addEventListener('resize', this.resize);
     (window as unknown as Record<string, unknown>).__session = this;
     (window as unknown as Record<string, unknown>).__game = this.game;
@@ -137,7 +146,9 @@ export class Session {
   stop(): void {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.resize);
+    this.resizeObserver.disconnect();
     this.input.dispose();
+    this.minimap.dispose();
     this.audio.stopMusic();
     this.renderer.post?.dispose();
     this.renderer.gl.dispose();
@@ -276,6 +287,7 @@ export class Session {
   }
 
   select(ids: number[], additive = false): void {
+    this.input.touchMode = 'auto';
     if (additive) {
       const set = new Set(this.selection);
       for (const id of ids) {
@@ -319,6 +331,7 @@ export class Session {
   }
 
   setPanel(mode: 'main' | 'buildEco' | 'buildMil'): void {
+    this.input.setTouchMode('auto');
     this.panelMode = mode;
     this.placing = null;
     this.targeting = null;
@@ -327,12 +340,14 @@ export class Session {
   }
 
   beginPlacement(type: string): void {
+    this.input.setTouchMode('auto');
     this.placing = { type, rotated: false };
     this.targeting = null;
     this.audio.play('click');
   }
 
   beginTargeting(mode: TargetMode): void {
+    this.input.setTouchMode('auto');
     this.targeting = mode;
     this.placing = null;
     this.renderer.showGhost(null);

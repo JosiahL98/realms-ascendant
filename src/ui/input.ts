@@ -13,6 +13,21 @@ interface DownState {
   time: number;
 }
 
+type TouchMode = 'auto' | 'select' | 'command';
+interface TouchGesture {
+  id: number;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
+  mode: 'pan' | 'select' | 'wall';
+  moved: boolean;
+  doubleTap: boolean;
+}
+
+const DOUBLE_TAP_MS = 350;
+const CAMERA_KEYS = new Set(['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight']);
+
 export class Input {
   private s: Session;
   mx = -1;
@@ -28,6 +43,14 @@ export class Input {
   private tcCycle = 0;
   private idleCycle = 0;
   private milCycle = 0;
+  touchMode: TouchMode = 'auto';
+  private touches = new Map<number, { x: number; y: number }>();
+  private touch: TouchGesture | null = null;
+  private pinch: { x: number; y: number; distance: number } | null = null;
+  private touchInput = false;
+  private suppressMouseUntil = 0;
+  private lastTap: { x: number; y: number; time: number } | null = null;
+  private pendingTap: { timer: ReturnType<typeof setTimeout>; run: () => void } | null = null;
 
   constructor(s: Session) {
     this.s = s;
@@ -35,13 +58,20 @@ export class Input {
     c.addEventListener('mousedown', this.onDown);
     window.addEventListener('mousemove', this.onMove);
     window.addEventListener('mouseup', this.onUp);
+    c.addEventListener('pointerdown', this.onTouchDown);
+    c.addEventListener('pointermove', this.onTouchMove);
+    c.addEventListener('pointerup', this.onTouchUp);
+    c.addEventListener('pointercancel', this.onTouchCancel);
+    c.addEventListener('lostpointercapture', this.onTouchCancel);
+    window.addEventListener('pointerdown', this.onOtherPointerDown, true);
     c.addEventListener('wheel', this.onWheel, { passive: false });
-    c.addEventListener('contextmenu', (e) => e.preventDefault());
+    c.addEventListener('contextmenu', this.onContextMenu);
     window.addEventListener('keydown', this.onKeyDown);
     window.addEventListener('keyup', this.onKeyUp);
     document.addEventListener('mouseleave', this.onLeave);
     document.addEventListener('mouseenter', this.onEnter);
     window.addEventListener('blur', this.onBlur);
+    window.addEventListener('resize', this.onBlur);
   }
 
   dispose(): void {
@@ -49,11 +79,28 @@ export class Input {
     c.removeEventListener('mousedown', this.onDown);
     window.removeEventListener('mousemove', this.onMove);
     window.removeEventListener('mouseup', this.onUp);
+    c.removeEventListener('pointerdown', this.onTouchDown);
+    c.removeEventListener('pointermove', this.onTouchMove);
+    c.removeEventListener('pointerup', this.onTouchUp);
+    c.removeEventListener('pointercancel', this.onTouchCancel);
+    c.removeEventListener('lostpointercapture', this.onTouchCancel);
+    window.removeEventListener('pointerdown', this.onOtherPointerDown, true);
+    c.removeEventListener('wheel', this.onWheel);
+    c.removeEventListener('contextmenu', this.onContextMenu);
     window.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('keyup', this.onKeyUp);
     document.removeEventListener('mouseleave', this.onLeave);
     document.removeEventListener('mouseenter', this.onEnter);
     window.removeEventListener('blur', this.onBlur);
+    window.removeEventListener('resize', this.onBlur);
+    this.onBlur();
+  }
+
+  private onContextMenu = (e: Event): void => e.preventDefault();
+
+  private ignoreMouse(e: MouseEvent): boolean {
+    const source = (e as MouseEvent & { sourceCapabilities?: { firesTouchEvents: boolean } }).sourceCapabilities;
+    return !!source?.firesTouchEvents || this.touches.size > 0 || performance.now() < this.suppressMouseUntil;
   }
 
   private onLeave = (): void => {
@@ -64,6 +111,11 @@ export class Input {
   };
   private onBlur = (): void => {
     this.keys.clear();
+    this.down = null;
+    this.mid = null;
+    this.dragging = false;
+    this.resetTouch();
+    this.mx = this.my = -1;
   };
 
   /* ------------------------------------------------------------------ */
@@ -80,14 +132,17 @@ export class Input {
 
   update(dt: number): void {
     const s = this.s;
-    if (s.hud.isModalOpen()) return;
+    if (s.hud.isModalOpen()) {
+      this.onBlur();
+      return;
+    }
     let dx = 0, dy = 0;
     const speed = 1100 * dt;
-    if (this.keys.has('ArrowLeft')) dx -= speed;
-    if (this.keys.has('ArrowRight')) dx += speed;
-    if (this.keys.has('ArrowUp')) dy -= speed;
-    if (this.keys.has('ArrowDown')) dy += speed;
-    if (this.inWindow && this.mx >= 0 && !this.mid && !this.down) {
+    if (this.keys.has('KeyA') || this.keys.has('ArrowLeft')) dx -= speed;
+    if (this.keys.has('KeyD') || this.keys.has('ArrowRight')) dx += speed;
+    if (this.keys.has('KeyW') || this.keys.has('ArrowUp')) dy -= speed;
+    if (this.keys.has('KeyS') || this.keys.has('ArrowDown')) dy += speed;
+    if (!this.touchInput && this.inWindow && this.mx >= 0 && !this.mid && !this.down) {
       const w = window.innerWidth, h = window.innerHeight, e = 6;
       if (this.mx <= e) dx -= speed;
       if (this.mx >= w - e) dx += speed;
@@ -130,8 +185,10 @@ export class Input {
   /* ------------------------------------------------------------------ */
 
   private onDown = (e: MouseEvent): void => {
+    if (this.ignoreMouse(e)) return;
     const s = this.s;
     if (s.hud.isModalOpen()) return;
+    this.touchInput = false;
     this.mx = e.clientX;
     this.my = e.clientY;
     s.audio.unlock();
@@ -150,32 +207,40 @@ export class Input {
       return;
     }
     if (e.button !== 0) return;
+    if (this.placeOrTarget(e.shiftKey)) return;
+    this.down = { x: e.clientX, y: e.clientY, button: 0, shift: e.shiftKey, ctrl: e.ctrlKey, time: performance.now() };
+    this.dragging = false;
+  };
+
+  private placeOrTarget(shift: boolean): boolean {
+    const s = this.s;
     if (s.placing) {
       const def = BUILDINGS[s.placing.type];
       const t = this.placementTile();
       if (def.wall) {
         this.wallStart = t;
-        return;
+        return true;
       }
       const units = s.ownSelectedUnits().filter((u) => u.def.builder).map((u) => u.id);
-      const r = s.issue({ c: 'build', units, building: s.placing.type, tx: t.tx, tz: t.tz, rotated: s.placing.rotated, queue: e.shiftKey });
-      if (r.ok && !e.shiftKey) {
+      const r = s.issue({ c: 'build', units, building: s.placing.type, tx: t.tx, tz: t.tz, rotated: s.placing.rotated, queue: shift });
+      if (r.ok && !shift) {
         s.placing = null;
         s.renderer.showGhost(null);
         s.panelMode = 'main';
       }
-      return;
+      return true;
     }
     if (s.targeting) {
-      this.applyTargeting(e.shiftKey);
-      if (!e.shiftKey) s.targeting = null;
-      return;
+      this.applyTargeting(shift);
+      if (!shift) s.targeting = null;
+      return true;
     }
-    this.down = { x: e.clientX, y: e.clientY, button: 0, shift: e.shiftKey, ctrl: e.ctrlKey, time: performance.now() };
-    this.dragging = false;
-  };
+    return false;
+  }
 
   private onMove = (e: MouseEvent): void => {
+    if (this.ignoreMouse(e)) return;
+    this.touchInput = false;
     this.mx = e.clientX;
     this.my = e.clientY;
     this.inWindow = true;
@@ -188,37 +253,22 @@ export class Input {
       return;
     }
     if (this.down && !this.dragging && Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > 5) this.dragging = true;
-    const box = this.s.hud.selBox;
     if (this.down && this.dragging) {
-      const x0 = Math.min(this.down.x, e.clientX), y0 = Math.min(this.down.y, e.clientY);
-      box.style.display = 'block';
-      box.style.left = `${x0}px`;
-      box.style.top = `${y0}px`;
-      box.style.width = `${Math.abs(e.clientX - this.down.x)}px`;
-      box.style.height = `${Math.abs(e.clientY - this.down.y)}px`;
+      this.showSelectionBox(this.down.x, this.down.y, e.clientX, e.clientY);
     }
   };
 
   private onUp = (e: MouseEvent): void => {
+    if (this.ignoreMouse(e)) return;
     const s = this.s;
     if (e.button === 1) {
       this.mid = null;
       return;
     }
     if (e.button !== 0) return;
-    if (this.wallStart && s.placing) {
-      const end = this.placementTile();
-      const tiles = lineTiles(this.wallStart.tx, this.wallStart.tz, end.tx, end.tz);
-      const units = s.ownSelectedUnits().filter((u) => u.def.builder).map((u) => u.id);
-      const r = s.issue({ c: 'buildLine', units, building: s.placing.type, tiles, queue: e.shiftKey });
-      this.wallStart = null;
-      if (r.ok && !e.shiftKey) {
-        s.placing = null;
-        s.renderer.showGhost(null);
-        s.panelMode = 'main';
-      }
-      return;
-    }
+    this.mx = e.clientX;
+    this.my = e.clientY;
+    if (this.finishWall(e.shiftKey)) return;
     const d = this.down;
     this.down = null;
     s.hud.selBox.style.display = 'none';
@@ -231,14 +281,221 @@ export class Input {
     this.clickSelect(e.clientX, e.clientY, d.shift, d.ctrl);
   };
 
+  private finishWall(shift: boolean): boolean {
+    const s = this.s;
+    if (this.wallStart && s.placing) {
+      const end = this.placementTile();
+      const tiles = lineTiles(this.wallStart.tx, this.wallStart.tz, end.tx, end.tz);
+      const units = s.ownSelectedUnits().filter((u) => u.def.builder).map((u) => u.id);
+      const r = s.issue({ c: 'buildLine', units, building: s.placing.type, tiles, queue: shift });
+      this.wallStart = null;
+      if (r.ok && !shift) {
+        s.placing = null;
+        s.renderer.showGhost(null);
+        s.panelMode = 'main';
+      }
+      return true;
+    }
+    return false;
+  }
+
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
+    if (this.s.hud.isModalOpen()) return;
     const r = this.s.renderer;
     const before = r.screenToGround(e.clientX, e.clientY);
     r.setZoom(r.zoom * Math.pow(1.1, -e.deltaY / 100));
     const after = r.screenToGround(e.clientX, e.clientY);
     r.centerOn(r.camX + before.x - after.x, r.camZ + before.z - after.z);
   };
+
+  /* ------------------------------------------------------------------ */
+  /* Touch: drag to pan, double-tap and drag to select, pinch to zoom.     */
+  /* ------------------------------------------------------------------ */
+
+  setTouchMode(mode: TouchMode): void {
+    this.resetTouch();
+    this.touchMode = mode;
+    if (mode !== 'auto') this.s.cancelModes();
+  }
+
+  cancelTouchAction(): void {
+    const hadTouchMode = this.touchMode !== 'auto';
+    this.resetTouch();
+    this.touchMode = 'auto';
+    if (!this.s.cancelModes() && !hadTouchMode) this.s.select([]);
+  }
+
+  private onOtherPointerDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse') return;
+    this.touchInput = true;
+    this.suppressMouseUntil = performance.now() + 800;
+    this.s.hud.hideTip();
+    // A toolbar or minimap interaction supersedes a tap waiting to commit.
+    if (e.target !== this.s.canvas) this.resetTouch();
+  };
+
+  private clearPendingTap(): void {
+    if (this.pendingTap) clearTimeout(this.pendingTap.timer);
+    this.pendingTap = null;
+  }
+
+  private resetTouch(): void {
+    this.clearPendingTap();
+    this.lastTap = null;
+    this.touch = null;
+    this.pinch = null;
+    this.wallStart = null;
+    this.s.hud.selBox.style.display = 'none';
+    const ids = [...this.touches.keys()];
+    this.touches.clear();
+    for (const id of ids) {
+      if (this.s.canvas.hasPointerCapture(id)) this.s.canvas.releasePointerCapture(id);
+    }
+  }
+
+  private showSelectionBox(x0: number, y0: number, x1: number, y1: number): void {
+    const box = this.s.hud.selBox;
+    box.style.display = 'block';
+    box.style.left = `${Math.min(x0, x1)}px`;
+    box.style.top = `${Math.min(y0, y1)}px`;
+    box.style.width = `${Math.abs(x1 - x0)}px`;
+    box.style.height = `${Math.abs(y1 - y0)}px`;
+  }
+
+  private pinchPosition(): { x: number; y: number; distance: number } {
+    const [a, b] = [...this.touches.values()];
+    return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2, distance: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)) };
+  }
+
+  private onTouchDown = (e: PointerEvent): void => {
+    if (e.pointerType === 'mouse' || this.s.hud.isModalOpen()) return;
+    e.preventDefault(); // Suppress compatibility mouse events (and duplicate commands).
+    this.touchInput = true;
+    this.suppressMouseUntil = performance.now() + 800;
+    this.mx = e.clientX;
+    this.my = e.clientY;
+    this.s.audio.unlock();
+    this.s.canvas.setPointerCapture(e.pointerId);
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (this.touches.size > 1) {
+      this.clearPendingTap();
+      this.lastTap = null;
+      this.touch = null;
+      this.wallStart = null;
+      this.s.hud.selBox.style.display = 'none';
+      this.pinch = this.pinchPosition();
+      return;
+    }
+    const doubleTap = !this.s.placing && !this.s.targeting && this.touchMode === 'auto' && !!this.lastTap
+      && performance.now() - this.lastTap.time < DOUBLE_TAP_MS
+      && Math.hypot(e.clientX - this.lastTap.x, e.clientY - this.lastTap.y) < 28;
+    // Delay a single tap just long enough to distinguish a selection gesture.
+    // A second tap elsewhere commits the first tap before starting a new gesture.
+    const pending = this.pendingTap;
+    this.clearPendingTap();
+    if (pending && !doubleTap) pending.run();
+    this.mx = e.clientX;
+    this.my = e.clientY;
+    this.lastTap = null;
+    const mode = this.s.placing && BUILDINGS[this.s.placing.type].wall ? 'wall'
+      : this.touchMode === 'select' || doubleTap ? 'select' : 'pan';
+    this.touch = { id: e.pointerId, startX: e.clientX, startY: e.clientY, x: e.clientX, y: e.clientY, mode, moved: false, doubleTap };
+    if (mode === 'wall') this.wallStart = this.placementTile();
+  };
+
+  private onTouchMove = (e: PointerEvent): void => {
+    if (!this.touches.has(e.pointerId)) return;
+    e.preventDefault();
+    this.suppressMouseUntil = performance.now() + 800;
+    this.touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    this.mx = e.clientX;
+    this.my = e.clientY;
+    if (this.pinch) {
+      if (this.touches.size < 2) return;
+      const next = this.pinchPosition();
+      const r = this.s.renderer;
+      const before = r.screenToGround(this.pinch.x, this.pinch.y);
+      r.setZoom(r.zoom * next.distance / this.pinch.distance);
+      const after = r.screenToGround(next.x, next.y);
+      r.centerOn(r.camX + before.x - after.x, r.camZ + before.z - after.z);
+      this.pinch = next;
+      return;
+    }
+    const t = this.touch;
+    if (!t || t.id !== e.pointerId) return;
+    if (!t.moved && Math.hypot(e.clientX - t.startX, e.clientY - t.startY) > 8) t.moved = true;
+    if (!t.moved) return;
+    if (t.mode === 'pan') this.pan(t.x - e.clientX, t.y - e.clientY);
+    else if (t.mode === 'select') this.showSelectionBox(t.startX, t.startY, e.clientX, e.clientY);
+    t.x = e.clientX;
+    t.y = e.clientY;
+  };
+
+  private onTouchUp = (e: PointerEvent): void => {
+    if (!this.touches.has(e.pointerId)) return;
+    e.preventDefault();
+    this.suppressMouseUntil = performance.now() + 800;
+    this.touches.delete(e.pointerId);
+    if (this.s.canvas.hasPointerCapture(e.pointerId)) this.s.canvas.releasePointerCapture(e.pointerId);
+    this.mx = e.clientX;
+    this.my = e.clientY;
+    // Lifting one finger after pinching must never select or issue an order.
+    if (this.pinch) {
+      if (!this.touches.size) this.pinch = null;
+      else if (this.touches.size >= 2) this.pinch = this.pinchPosition();
+      return;
+    }
+    const t = this.touch;
+    this.touch = null;
+    this.s.hud.selBox.style.display = 'none';
+    if (!t || this.s.hud.isModalOpen()) return;
+    // Captured pointers may finish over a HUD panel; do not place or command there.
+    if (this.overHud()) {
+      this.wallStart = null;
+      return;
+    }
+    if (t.mode === 'wall') {
+      this.finishWall(false);
+    } else if (t.mode === 'select') {
+      if (t.moved) this.boxSelect(t.startX, t.startY, e.clientX, e.clientY, false);
+      else this.clickSelect(e.clientX, e.clientY, false, t.doubleTap);
+      this.touchMode = 'auto';
+    } else if (!t.moved) {
+      if (this.s.placing || this.s.targeting || this.touchMode === 'command') {
+        this.touchTap(e.clientX, e.clientY);
+      } else {
+        this.lastTap = { x: e.clientX, y: e.clientY, time: performance.now() };
+        const run = () => this.touchTap(e.clientX, e.clientY);
+        this.pendingTap = { run, timer: setTimeout(() => {
+          this.pendingTap = null;
+          this.lastTap = null;
+          run();
+        }, DOUBLE_TAP_MS) };
+      }
+    }
+  };
+
+  private onTouchCancel = (e: PointerEvent): void => {
+    if (!this.touches.has(e.pointerId)) return;
+    this.resetTouch();
+  };
+
+  private touchTap(x: number, y: number): void {
+    const s = this.s;
+    if (s.hud.isModalOpen()) return;
+    this.mx = x;
+    this.my = y;
+    if (this.placeOrTarget(false)) return;
+    const target = s.renderer.pick(x, y);
+    const hasUnits = s.ownSelectedUnits().length > 0;
+    const friendlySelection = target && target.owner === s.local && target.kind !== 'resource'
+      && !(hasUnits && target.kind === 'unit' && target.def.animal);
+    if (this.touchMode === 'command' || (hasUnits && !friendlySelection)) {
+      this.rightClick(false);
+      this.touchMode = 'auto';
+    } else this.clickSelect(x, y, false, false);
+  }
 
   /* ------------------------------------------------------------------ */
   /* Selection                                                            */
@@ -532,8 +789,7 @@ export class Input {
 
   private onKeyDown = (e: KeyboardEvent): void => {
     const s = this.s;
-    if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'SELECT') return;
-    this.keys.add(e.key);
+    if (e.target instanceof HTMLElement && e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
     if (e.key === 'F10' || (e.key === 'Escape' && s.hud.isModalOpen())) {
       e.preventDefault();
       if (s.hud.isModalOpen()) {
@@ -543,6 +799,16 @@ export class Input {
       return;
     }
     if (s.hud.isModalOpen()) return;
+    // Physical key codes keep movement stable with Shift/Caps Lock and stop
+    // the camera keys from falling through to the command grid.
+    if (CAMERA_KEYS.has(e.code)) {
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        e.preventDefault();
+        this.keys.add(e.code);
+      }
+      return;
+    }
+    if (e.metaKey || e.altKey) return;
     if (e.key === 'Escape') {
       if (!s.cancelModes()) {
         if (s.selection.length) s.select([]);
@@ -623,7 +889,7 @@ export class Input {
   };
 
   private onKeyUp = (e: KeyboardEvent): void => {
-    this.keys.delete(e.key);
+    this.keys.delete(e.code);
   };
 
   /** Draw wall-line preview on the 2D overlay. */

@@ -15,7 +15,7 @@ export interface MapInfo {
 export const MAP_TYPES: MapInfo[] = [
   { id: 'steppe', name: 'Steppe', description: 'Open grassland with scattered woods and gentle hills. Aggressive play thrives here.' },
   { id: 'highlands', name: 'Highlands', description: 'Rolling hills, lakes and thick pine woods. Hold the high ground.' },
-  { id: 'forest', name: 'Hercynian Forest', description: 'An endless forest with narrow paths. Walls are easy, rushes are hard.' },
+  { id: 'forest', name: 'Hercynian Forest', description: 'Dense woodland crossed by winding trails and clearings. Many routes reward scouting and flanking.' },
   { id: 'oasis', name: 'Oasis', description: 'Desert sands around a green oasis rich with wood and gold.' },
   { id: 'mediterranean', name: 'Middle Sea', description: 'The heart of the Punic world: players ring a great inland sea.' },
   { id: 'rivers', name: 'Twin Rivers', description: 'Two rivers divide the land, crossable only at shallow fords.' },
@@ -45,7 +45,7 @@ interface Style {
 const STYLES: Record<MapType, Style> = {
   steppe: { base: T.dryGrass, alt: T.grass, patch: T.dirt, hills: 1.3, forestAmount: 0.16, treeTypes: [0, 0, 3], lakes: 0, sea: false, rivers: false, desert: false },
   highlands: { base: T.grass, alt: T.dryGrass, patch: T.dirt, hills: 2.6, forestAmount: 0.24, treeTypes: [1, 1, 0], lakes: 3, sea: false, rivers: false, desert: false },
-  forest: { base: T.grass, alt: T.forest, patch: T.dirt, hills: 1.0, forestAmount: 0.62, treeTypes: [1, 0, 1], lakes: 0, sea: false, rivers: false, desert: false },
+  forest: { base: T.grass, alt: T.forest, patch: T.dirt, hills: 1.0, forestAmount: 0.30, treeTypes: [1, 0, 1], lakes: 0, sea: false, rivers: false, desert: false },
   oasis: { base: T.sand, alt: T.dirt, patch: T.dryGrass, hills: 1.1, forestAmount: 0.05, treeTypes: [2, 2, 2], lakes: 0, sea: false, rivers: false, desert: true },
   mediterranean: { base: T.grass, alt: T.dryGrass, patch: T.dirt, hills: 1.4, forestAmount: 0.14, treeTypes: [3, 3, 0], lakes: 0, sea: true, rivers: false, desert: false },
   rivers: { base: T.grass, alt: T.dryGrass, patch: T.dirt, hills: 1.0, forestAmount: 0.17, treeTypes: [0, 1, 3], lakes: 0, sea: false, rivers: true, desert: false },
@@ -208,7 +208,16 @@ export function generateMap(game: Game): void {
   map.refreshAll();
 
   /* ---------------- Player bases ---------------- */
-  const reserved = new Uint8Array(n * n);
+  // Reserve woodland trails before placing resources so a mine or woodline
+  // cannot seal an otherwise open route. Other map styles keep their layout.
+  const reserved = setup.mapType === 'forest' ? forestTrails(n, setup.seed, startList) : new Uint8Array(n * n);
+  if (setup.mapType === 'forest') {
+    for (let k = 0; k < reserved.length; k++) {
+      if (!reserved[k]) continue;
+      map.terrain[k] = map.terrain[k] === T.water || map.terrain[k] === T.deep ? T.shallows : T.grass;
+    }
+    map.refreshAll();
+  }
   const reserve = (x0: number, z0: number, w: number, hh: number, pad = 0): void => {
     for (let z = z0 - pad; z < z0 + hh + pad; z++)
       for (let x = x0 - pad; x < x0 + w + pad; x++) if (x >= 0 && z >= 0 && x < n && z < n) reserved[z * n + x] = 1;
@@ -263,6 +272,8 @@ export function generateMap(game: Game): void {
     map.terrain[z * n + x] = map.terrain[z * n + x] === T.sand ? T.sand : T.forest;
   };
   const pickTree = (): number => rng.pick(style.treeTypes);
+  // Keep gaps inside the forest stands as well as along the reserved trails.
+  const treeChance = setup.mapType === 'forest' ? 0.5 : 0.93;
 
   const res = START_RES[setup.resources] ?? START_RES.standard;
   for (const p of players) {
@@ -342,7 +353,8 @@ export function generateMap(game: Game): void {
       for (let z = cz - 5; z <= cz + 5; z++)
         for (let x = cx - 5; x <= cx + 5; x++) {
           const d = Math.hypot(x - cx, z - cz) + noise3.noise2(x / 3, z / 3) * 1.8;
-          if (d < 4.2 && tileFree(x, z) && Math.hypot(x - s.x, z - s.z) > 6.5) addTree(x, z, rng.chance(0.8) ? tt : pickTree());
+          if (d < 4.2 && tileFree(x, z) && Math.hypot(x - s.x, z - s.z) > 6.5
+            && (setup.mapType !== 'forest' || rng.chance(treeChance))) addTree(x, z, rng.chance(0.8) ? tt : pickTree());
         }
     }
     for (let i = 0; i < 4; i++) {
@@ -367,7 +379,7 @@ export function generateMap(game: Game): void {
       if (edge < 4) v += 0.25;
       if (msd < 18) v -= (18 - msd) * 0.03;
       if (map.terrain[z * n + x] === T.sand && style.desert) v -= 0.25;
-      if (v > thr && rng.chance(0.93)) addTree(x, z, pickTree());
+      if (v > thr && rng.chance(treeChance)) addTree(x, z, pickTree());
     }
   }
   // Oasis grove
@@ -464,6 +476,74 @@ export function generateMap(game: Game): void {
 
   map.refreshAll();
   ensureConnectivity(game, startList);
+}
+
+/** A connected network with loops, rather than just the minimum links between bases. */
+function forestTrails(n: number, seed: number, starts: { x: number; z: number }[]): Uint8Array {
+  const trails = new Uint8Array(n * n);
+  const rng = new RNG(seed ^ 0x5f3759df);
+  const cells = Math.max(3, Math.round((n - 16) / 26));
+  const spacing = (n - 16) / cells;
+  const junctions: { x: number; z: number }[][] = [];
+  for (let row = 0; row <= cells; row++) {
+    const nodes: { x: number; z: number }[] = [];
+    for (let col = 0; col <= cells; col++) {
+      nodes.push({
+        x: Math.max(6, Math.min(n - 7, 8 + col * spacing + rng.range(-0.2, 0.2) * spacing)),
+        z: Math.max(6, Math.min(n - 7, 8 + row * spacing + rng.range(-0.2, 0.2) * spacing)),
+      });
+    }
+    junctions.push(nodes);
+  }
+  const connect = (a: { x: number; z: number }, b: { x: number; z: number }): void => {
+    const dx = b.x - a.x, dz = b.z - a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.01) return;
+    const bend = rng.range(-0.15, 0.15) * length;
+    const radius = rng.range(2.1, 2.8);
+    const steps = Math.ceil(length * 2);
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const offset = Math.sin(Math.PI * t) * bend;
+      const cx = a.x + dx * t - dz / length * offset;
+      const cz = a.z + dz * t + dx / length * offset;
+      for (let z = Math.max(3, Math.floor(cz - radius)); z <= Math.min(n - 4, Math.ceil(cz + radius)); z++) {
+        for (let x = Math.max(3, Math.floor(cx - radius)); x <= Math.min(n - 4, Math.ceil(cx + radius)); x++) {
+          if (Math.hypot(x + 0.5 - cx, z + 0.5 - cz) <= radius) trails[z * n + x] = 1;
+        }
+      }
+    }
+  };
+  // Every cell has a circuit around it, providing a bypass if one trail is walled.
+  for (let row = 0; row <= cells; row++) {
+    for (let col = 0; col <= cells; col++) {
+      if (col < cells) connect(junctions[row][col], junctions[row][col + 1]);
+      if (row < cells) connect(junctions[row][col], junctions[row + 1][col]);
+    }
+  }
+  // Give each base several approaches in different directions, not one entrance.
+  const nodes = junctions.flat();
+  for (const start of starts) {
+    const nearest = [...nodes].sort((a, b) => Math.hypot(a.x - start.x, a.z - start.z) - Math.hypot(b.x - start.x, b.z - start.z));
+    const angles: number[] = [];
+    for (const node of nearest) {
+      const angle = Math.atan2(node.z - start.z, node.x - start.x);
+      if (angles.some((other) => Math.cos(angle - other) > 0.5)) continue;
+      connect(start, node);
+      angles.push(angle);
+      if (angles.length === 3) break;
+    }
+  }
+  // The existing base clearing supplies the final connection. Leave this area
+  // available for starting food, mines and nearby woodlines as before.
+  for (const start of starts) {
+    for (let z = Math.max(0, start.z - 12); z <= Math.min(n - 1, start.z + 12); z++) {
+      for (let x = Math.max(0, start.x - 12); x <= Math.min(n - 1, start.x + 12); x++) {
+        if (Math.hypot(x - start.x, z - start.z) < 12) trails[z * n + x] = 0;
+      }
+    }
+  }
+  return trails;
 }
 
 /** Carve paths through trees so every start can reach every other start by land. */

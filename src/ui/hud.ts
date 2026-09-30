@@ -1,5 +1,6 @@
 import { AGE_NAMES, type Cost, type Res } from '../data/types';
 import { TECHS } from '../data/techs';
+import { BUILDINGS } from '../data/buildings';
 import { UNITS } from '../data/units';
 import { formatTime } from '../util/math';
 import type { Building, Entity, Unit } from '../sim/entities';
@@ -32,6 +33,7 @@ export class Hud {
   private cmdSig = '';
   private infoSig = '';
   private buttons: CmdButton[] = [];
+  private pressedCommand: HTMLElement | null = null;
   private tipOwner: HTMLElement | null = null;
   private modal: HTMLElement | null = null;
   private pausedEl: HTMLElement;
@@ -54,6 +56,13 @@ export class Hud {
       <div id="messages"></div>
       <div id="scores"></div>
       ${s.spectator ? '<div id="specboard" class="wood"></div>' : ''}
+      <div id="touch-controls" role="group" aria-label="Touch controls">
+        <div id="touch-hint" role="status">Drag to pan · Pinch to zoom · Help for gestures</div>
+        <button class="touchbtn" id="touch-select" type="button" aria-pressed="false" aria-label="Select units with the next drag">Select</button>
+        <button class="touchbtn" id="touch-command" type="button" aria-pressed="false" aria-label="Command the selection with the next tap" disabled>Command</button>
+        <button class="touchbtn" id="touch-rotate" type="button" hidden aria-label="Rotate gate">Rotate</button>
+        <button class="touchbtn" id="touch-cancel" type="button" disabled>Deselect</button>
+      </div>
       <div id="bottom" class="wood">
         <div id="cmd"></div>
         <div id="info"></div>
@@ -91,6 +100,22 @@ export class Hud {
     (root.querySelector('#btn-menu') as HTMLElement).addEventListener('click', () => this.showMenu());
     (root.querySelector('#btn-help') as HTMLElement).addEventListener('click', () => this.showHelp());
     (root.querySelector('#btn-civ') as HTMLElement).addEventListener('click', () => this.showCivInfo());
+    for (const mode of ['select', 'command'] as const) {
+      root.querySelector(`#touch-${mode}`)!.addEventListener('click', () => {
+        this.s.input.setTouchMode(this.s.input.touchMode === mode ? 'auto' : mode);
+        this.updateTouchControls();
+      });
+    }
+    root.querySelector('#touch-cancel')!.addEventListener('click', () => {
+      this.s.input.cancelTouchAction();
+      this.refreshCommands();
+      this.updateTouchControls();
+    });
+    root.querySelector('#touch-rotate')!.addEventListener('click', () => {
+      if (this.s.placing && BUILDINGS[this.s.placing.type].gate) {
+        this.s.placing.rotated = !this.s.placing.rotated;
+      }
+    });
     this.pausedEl = document.createElement('div');
     this.pausedEl.className = 'paused-banner';
     this.pausedEl.textContent = 'Paused';
@@ -98,7 +123,8 @@ export class Hud {
     root.appendChild(this.pausedEl);
     // resource tooltips
     root.querySelectorAll('.res').forEach((el) => {
-      el.addEventListener('mouseenter', () => {
+      el.addEventListener('pointerenter', (event) => {
+        if ((event as PointerEvent).pointerType !== 'mouse') return;
         const k = (el as HTMLElement).dataset.tip!;
         const names: Record<string, string> = { wood: 'Wood', food: 'Food', gold: 'Gold', stone: 'Stone', pop: 'Population' };
         const vc = this.s.villagerCounts();
@@ -106,7 +132,7 @@ export class Hud {
           : `Villagers gathering ${names[k].toLowerCase()}: ${vc[k as Res]}`;
         this.showTip(el as HTMLElement, `<div class="tt-title">${names[k]}</div><div>${desc}</div>`);
       });
-      el.addEventListener('mouseleave', () => this.hideTip());
+      el.addEventListener('pointerleave', () => this.hideTip());
     });
   }
 
@@ -158,6 +184,33 @@ export class Hud {
     this.updateSpectator();
     this.updateCommands();
     this.updateInfo();
+    this.updateTouchControls();
+  }
+
+  private updateTouchControls(): void {
+    const s = this.s;
+    const mode = s.input.touchMode;
+    for (const name of ['select', 'command'] as const) {
+      this.root.querySelector(`#touch-${name}`)!.setAttribute('aria-pressed', String(mode === name));
+    }
+    const hasSelection = s.selection.length > 0;
+    const ownSelection = s.selectedEntities().filter((e) => e.owner === s.local);
+    const canCommand = !s.spectator && !s.game.players[s.local].defeated && ownSelection.length > 0;
+    (this.root.querySelector('#touch-command') as HTMLButtonElement).disabled = !canCommand;
+    (this.root.querySelector('#touch-rotate') as HTMLButtonElement).hidden = !s.placing || !BUILDINGS[s.placing.type].gate || s.spectator;
+    const hasAction = mode !== 'auto' || !!s.placing || !!s.targeting || s.panelMode !== 'main';
+    const cancel = this.root.querySelector('#touch-cancel') as HTMLButtonElement;
+    cancel.textContent = hasAction ? 'Cancel' : 'Deselect';
+    cancel.disabled = !hasSelection && !hasAction;
+    let hint = 'Drag to pan · Pinch to zoom · Help for gestures';
+    if (s.placing) hint = BUILDINGS[s.placing.type].wall ? 'Drag to draw a wall · Cancel to go back' : `Tap to place ${BUILDINGS[s.placing.type].name}`;
+    else if (s.targeting || mode === 'command') hint = 'Tap a target to command · Cancel to go back';
+    else if (mode === 'select') hint = 'Drag a box around units to select';
+    else if (canCommand) hint = ownSelection.some((e) => e.kind === 'unit')
+      ? 'Tap ground, resources or enemies to command'
+      : 'Use Command, then tap to set a gather point';
+    const hintEl = this.root.querySelector('#touch-hint')!;
+    if (hintEl.textContent !== hint) hintEl.textContent = hint;
   }
 
   /** Spectating: the top bar shows the watched player's resources, or nothing when watching everyone. */
@@ -229,6 +282,9 @@ export class Hud {
   }
 
   private updateCommands(): void {
+    // Progress updates must not replace the button between a touch press and release.
+    if (this.pressedCommand?.isConnected) return;
+    this.pressedCommand = null;
     const s = this.s;
     const btns = computeButtons(s);
     const p = s.game.players[s.local];
@@ -247,31 +303,49 @@ export class Hud {
         this.cmdEl.appendChild(d);
         continue;
       }
-      const d = document.createElement('div');
+      const d = document.createElement('button');
+      d.type = 'button';
       d.className = 'cbtn';
+      d.setAttribute('aria-label', b.title + (b.reason ? `: ${b.reason}` : ''));
+      d.setAttribute('aria-disabled', String(!b.enabled));
+      d.title = b.title;
       if (!b.enabled) d.classList.add('off');
       else if (b.cost && !affordable(p.res, b.cost)) d.classList.add('poor');
       if (b.active) d.classList.add('on');
       d.style.backgroundImage = `url("${b.icon}")`;
       d.innerHTML = `<span class="hk">${GRID_KEYS[i]}</span>${b.badge ? `<span class="badge">${b.badge}</span>` : ''}${b.progress !== undefined ? `<div class="prog" style="width:${(b.progress * 100).toFixed(0)}%"></div>` : ''}`;
-      d.addEventListener('mousedown', (ev) => {
+      d.addEventListener('click', (ev) => {
         ev.stopPropagation();
-        if (ev.button === 0) {
-          if (!b.enabled) {
-            if (b.reason) this.message(b.reason, 'err');
-            this.s.audio.play('error');
-            return;
-          }
-          b.action(ev.shiftKey);
-          this.refreshCommands();
-        } else if (ev.button === 2 && b.rightAction) {
+        this.hideTip();
+        if (!b.enabled) {
+          if (b.reason) this.message(b.reason, 'err');
+          this.s.audio.play('error');
+          return;
+        }
+        b.action(ev.shiftKey);
+        this.refreshCommands();
+      });
+      d.addEventListener('pointerdown', (ev) => {
+        if (ev.button === 0) this.pressedCommand = d;
+        if (ev.pointerType === 'mouse' && ev.button === 2 && b.rightAction) {
+          ev.stopPropagation();
           b.rightAction();
           this.refreshCommands();
         }
       });
+      const release = () => {
+        if (this.pressedCommand === d) this.pressedCommand = null;
+      };
+      d.addEventListener('pointerup', release);
+      d.addEventListener('pointercancel', release);
       d.addEventListener('contextmenu', (ev) => ev.preventDefault());
-      d.addEventListener('mouseenter', () => this.showTip(d, this.buttonTip(b, GRID_KEYS[i])));
-      d.addEventListener('mouseleave', () => this.hideTip());
+      d.addEventListener('pointerenter', (ev) => {
+        if (ev.pointerType === 'mouse') this.showTip(d, this.buttonTip(b, GRID_KEYS[i]));
+      });
+      d.addEventListener('pointerleave', () => {
+        release();
+        this.hideTip();
+      });
       this.cmdEl.appendChild(d);
     }
     if (this.tipOwner && !this.tipOwner.isConnected) this.hideTip();
@@ -313,7 +387,7 @@ export class Hud {
     if (y < 40) y = r.bottom + 8;
     if (x + tw > window.innerWidth - 8) x = window.innerWidth - tw - 8;
     this.tipEl.style.left = `${Math.max(4, x)}px`;
-    this.tipEl.style.top = `${y}px`;
+    this.tipEl.style.top = `${Math.max(4, Math.min(y, window.innerHeight - th - 4))}px`;
   }
   hideTip(): void {
     this.tipOwner = null;
@@ -365,7 +439,7 @@ export class Hud {
         d.className = 'gu';
         d.style.backgroundImage = `url("${entityIcon(s, e)}")`;
         d.innerHTML = `<div class="ghp"><div style="width:${(Math.max(0, frac(e)) * 100).toFixed(0)}%"></div></div>`;
-        d.addEventListener('mousedown', (ev) => {
+        d.addEventListener('click', (ev) => {
           ev.stopPropagation();
           if (ev.shiftKey) s.select([e.id], true);
           else s.select([e.id]);
@@ -456,7 +530,7 @@ export class Hud {
           d.innerHTML = `<div class="qp" style="width:${Math.min(100, (b.queueTime / total) * 100).toFixed(0)}%"></div>`;
         }
         d.title = 'Click to cancel';
-        d.addEventListener('mousedown', (ev) => {
+        d.addEventListener('click', (ev) => {
           ev.stopPropagation();
           s.issue({ c: 'cancel', building: b.id, index: i });
         });
@@ -472,7 +546,7 @@ export class Hud {
         d.className = 'gi';
         d.style.backgroundImage = `url("${entityIcon(s, u)}")`;
         d.title = `${u.def.name} — click to ungarrison`;
-        d.addEventListener('mousedown', (ev) => {
+        d.addEventListener('click', (ev) => {
           ev.stopPropagation();
           s.issue({ c: 'ungarrison', building: b.id, unit: id });
         });
@@ -498,6 +572,7 @@ export class Hud {
 
   private openModal(html: string, pause = true): HTMLElement {
     this.closeModal();
+    this.hideTip();
     const back = document.createElement('div');
     back.className = 'modal-back';
     back.innerHTML = `<div class="modal wood trim">${html}</div>`;
@@ -632,9 +707,11 @@ export class Hud {
   showHelp(): void {
     const m = this.openModal(`<h2>How to Play</h2><div class="help" style="max-width:760px">
       <p><b>Goal:</b> gather resources, grow your population, advance through the four ages, and destroy every enemy unit and building — or build a Wonder and defend it.</p>
+      <p><b>Touch:</b> drag one finger to pan; pinch to zoom. Tap a unit or building to select it. To select a group, double-tap, hold the second tap and drag a box, or tap <b>Select</b> and then drag. Tap ground, resources or enemies to command selected units. For a command on a friendly target or to set a building's gather point, tap <b>Command</b> first, then the target. Tap the minimap to jump across the map.</p>
+      <p><b>Touch building:</b> select villagers, tap a Build button, choose a building, then tap the map to place it. Drag to lay walls; tap <b>Rotate</b> to turn a gate. <b>Cancel</b> leaves the current action; <b>Deselect</b> clears your selection. Tap an item in a building's training queue to cancel it.</p>
       <p><b>Mouse:</b> Left-click to select, drag to box-select, double-click to select all of a type on screen. Right-click to move, attack, gather, build, repair or garrison depending on what you click. Hold <kbd>Shift</kbd> to queue orders or to place several buildings. Drag walls to draw a line.</p>
-      <p><b>Camera:</b> <kbd>Arrow keys</kbd> or move the mouse to the screen edge; middle-drag to pan; mouse wheel to zoom; click the minimap.</p>
-      <p><b>Hotkeys:</b> The command grid uses <kbd>Q W E R T</kbd> / <kbd>A S D F G</kbd> / <kbd>Z X C V B</kbd>. <kbd>H</kbd> selects your Town Center, <kbd>.</kbd> next idle villager, <kbd>,</kbd> idle military, <kbd>Space</kbd> jumps to the last alert, <kbd>Ctrl+1-9</kbd> makes a control group, <kbd>1-9</kbd> recalls it, <kbd>Del</kbd> deletes, <kbd>Esc</kbd> cancels, <kbd>F3</kbd> or <kbd>P</kbd> pauses, <kbd>+</kbd>/<kbd>-</kbd> change game speed, <kbd>R</kbd> rotates a gate while placing.</p>
+      <p><b>Camera:</b> <kbd>W A S D</kbd> or move the mouse to the screen edge; middle-drag to pan; mouse wheel to zoom; click the minimap.</p>
+      <p><b>Hotkeys:</b> The command grid uses <kbd>${GRID_KEYS.slice(0, 5).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(5, 10).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(10).join(' ')}</kbd>. <kbd>H</kbd> selects your Town Center, <kbd>.</kbd> next idle villager, <kbd>,</kbd> idle military, <kbd>Space</kbd> jumps to the last alert, <kbd>Ctrl+1-9</kbd> makes a control group, <kbd>1-9</kbd> recalls it, <kbd>Del</kbd> deletes, <kbd>Esc</kbd> cancels, <kbd>F3</kbd> or <kbd>P</kbd> pauses, <kbd>+</kbd>/<kbd>-</kbd> change game speed, <kbd>R</kbd> rotates a gate while placing.</p>
       <p><b>Economy:</b> Villagers carry 10 of a resource to the nearest drop-off (Town Center, Mill, Lumber Camp, Mining Camp). Herd sheep to your Town Center, hunt deer and boar (boar fight back!), forage berries, then build farms around a Mill. Houses give 5 population each.</p>
       <p><b>Ages:</b> Research the next age at the Town Center once you have two buildings of the current age.</p>
       <p><b>Saving:</b> save and load from the in-game Menu (<kbd>F10</kbd>) or load from the main menu. The game also saves itself every five minutes of play (the Autosave). Saves are kept in this browser.</p>
