@@ -255,6 +255,7 @@ body:has(#specboard) #scores { display: none; }
   #topbar .topbtn { min-height: 32px; }
   #idlebtn { width: 44px; height: 44px; }
   .cbtn, .qi, .gu, .gi, #idlebtn { touch-action: manipulation; }
+  .cbtn { -webkit-touch-callout: none; }
   #info .qi, #info .qi:first-child, #info .garr .gi { width: 44px; height: 44px; }
   #info .gu { width: 44px; height: 48px; background-size: 42px 42px; }
   .setup select, .setup input { min-height: 40px; font-size: 16px; }
