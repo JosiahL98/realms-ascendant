@@ -10,6 +10,8 @@ import type { Session } from './session';
 import { deleteSave, formatClock, listSaves, saveListHtml, type SaveMeta } from './saves';
 
 const RES_ORDER: Res[] = ['wood', 'food', 'gold', 'stone'];
+/** How long a touch must rest on a command button to show its tooltip. */
+const HOLD_MS = 450;
 
 export class Hud {
   s: Session;
@@ -323,9 +325,21 @@ export class Hud {
       if (b.active) d.classList.add('on');
       d.style.backgroundImage = `url("${b.icon}")`;
       d.innerHTML = `<span class="hk">${GRID_KEYS[i]}</span>${b.badge ? `<span class="badge">${b.badge}</span>` : ''}${b.progress !== undefined ? `<div class="prog" style="width:${(b.progress * 100).toFixed(0)}%"></div>` : ''}`;
+      // Touch has no hover: holding a button shows its tooltip instead of pressing it.
+      let holdTimer = 0;
+      let held = false;
+      let holdX = 0, holdY = 0;
+      const endHold = () => {
+        clearTimeout(holdTimer);
+        if (held) this.hideTip();
+      };
       d.addEventListener('click', (ev) => {
         ev.stopPropagation();
         this.hideTip();
+        if (held) {
+          held = false;
+          return;
+        }
         if (!b.enabled) {
           if (b.reason) this.message(b.reason, 'err');
           this.s.audio.play('error');
@@ -341,12 +355,30 @@ export class Hud {
           b.rightAction();
           this.refreshCommands();
         }
+        if (ev.pointerType !== 'mouse') {
+          // a browser may skip the click after a long press, so never carry `held` into a new press
+          held = false;
+          holdX = ev.clientX;
+          holdY = ev.clientY;
+          clearTimeout(holdTimer);
+          holdTimer = window.setTimeout(() => {
+            held = true;
+            this.showTip(d, this.buttonTip(b, GRID_KEYS[i], true));
+          }, HOLD_MS);
+        }
+      });
+      d.addEventListener('pointermove', (ev) => {
+        if (ev.pointerType !== 'mouse' && Math.hypot(ev.clientX - holdX, ev.clientY - holdY) > 10) clearTimeout(holdTimer);
       });
       const release = () => {
         if (this.pressedCommand === d) this.pressedCommand = null;
+        endHold();
       };
       d.addEventListener('pointerup', release);
-      d.addEventListener('pointercancel', release);
+      d.addEventListener('pointercancel', () => {
+        release();
+        held = false;
+      });
       d.addEventListener('contextmenu', (ev) => ev.preventDefault());
       d.addEventListener('pointerenter', (ev) => {
         if (ev.pointerType === 'mouse') this.showTip(d, this.buttonTip(b, GRID_KEYS[i]));
@@ -376,13 +408,13 @@ export class Hud {
     return true;
   }
 
-  private buttonTip(b: CmdButton, key: string): string {
+  private buttonTip(b: CmdButton, key: string, touch = false): string {
     const p = this.s.game.players[this.s.local];
-    let html = `<div class="tt-title">${b.title} <span class="tt-hk">(${key})</span></div>`;
+    let html = `<div class="tt-title">${b.title}${touch ? '' : ` <span class="tt-hk">(${key})</span>`}</div>`;
     if (b.cost) html += costHtml(b.cost, p.res);
     if (b.desc) html += `<div>${b.desc}</div>`;
     if (!b.enabled && b.reason) html += `<div class="tt-reason">${b.reason}</div>`;
-    if (b.rightAction) html += `<div class="tt-hk">Shift-click: queue 5 · Right-click: cancel one</div>`;
+    if (b.rightAction && !touch) html += `<div class="tt-hk">Shift-click: queue 5 · Right-click: cancel one</div>`;
     return html;
   }
 
@@ -717,7 +749,7 @@ export class Hud {
     const m = this.openModal(`<h2>How to Play</h2><div class="help" style="max-width:760px">
       <p><b>Goal:</b> gather resources, grow your population, advance through the four ages, and destroy every enemy unit and building — or build a Wonder and defend it.</p>
       <p><b>Touch:</b> drag one finger to pan; pinch to zoom. Tap a unit or building to select it. To select a group, double-tap, hold the second tap and drag a box, or tap <b>Select</b> and then drag. Tap ground, resources or enemies to command selected units. Tapping your own unit or building selects it; use <b>Interact</b> first to garrison, repair, trade or work there instead. With a production building selected, use <b>Rally</b> and tap where new units should gather. Tap the minimap to jump across the map.</p>
-      <p><b>Touch building:</b> select villagers, tap a Build button, choose a building, then tap the map to place it. Drag to lay walls; tap <b>Rotate</b> to turn a gate. <b>Cancel</b> leaves the current action; <b>Deselect</b> clears your selection. Tap an item in a building's training queue to cancel it.</p>
+      <p><b>Touch building:</b> select villagers, tap a Build button, choose a building, then tap the map to place it. Drag to lay walls; tap <b>Rotate</b> to turn a gate. <b>Cancel</b> leaves the current action; <b>Deselect</b> clears your selection. Tap an item in a building's training queue to cancel it. Press and hold a command button to see what it does and what it costs.</p>
       <p><b>Mouse:</b> Left-click to select, drag to box-select, double-click to select all of a type on screen. Right-click to move, attack, gather, build, repair or garrison depending on what you click. Hold <kbd>Shift</kbd> to queue orders or to place several buildings. Drag walls to draw a line.</p>
       <p><b>Camera:</b> <kbd>W A S D</kbd> or move the mouse to the screen edge; middle-drag to pan; mouse wheel to zoom; click the minimap.</p>
       <p><b>Hotkeys:</b> The command grid uses <kbd>${GRID_KEYS.slice(0, 5).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(5, 10).join(' ')}</kbd> / <kbd>${GRID_KEYS.slice(10).join(' ')}</kbd>. <kbd>H</kbd> selects your Town Center, <kbd>.</kbd> next idle villager, <kbd>,</kbd> idle military, <kbd>Space</kbd> jumps to the last alert, <kbd>Ctrl+1-9</kbd> makes a control group, <kbd>1-9</kbd> recalls it, <kbd>Del</kbd> deletes, <kbd>Esc</kbd> cancels, <kbd>F3</kbd> or <kbd>P</kbd> pauses, <kbd>+</kbd>/<kbd>-</kbd> change game speed, <kbd>R</kbd> rotates a gate while placing.</p>
