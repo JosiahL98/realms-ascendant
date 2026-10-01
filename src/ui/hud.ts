@@ -34,7 +34,6 @@ export class Hud {
   selBox: HTMLElement;
   private lastUpdate = 0;
   private cmdSig = '';
-  private cmdScrollContext = '';
   private infoSig = '';
   private buttons: CmdButton[] = [];
   private pressedCommand: HTMLElement | null = null;
@@ -315,9 +314,6 @@ export class Hud {
     this.buttons = btns;
     const bySlot = new Map<number, CmdButton>();
     for (const b of btns) if (!bySlot.has(b.slot)) bySlot.set(b.slot, b);
-    const scrollContext = `${s.panelMode}:${s.selVersion}`;
-    const scrollTop = scrollContext === this.cmdScrollContext ? this.cmdEl.scrollTop : 0;
-    this.cmdScrollContext = scrollContext;
     this.cmdEl.innerHTML = '';
     let reanchor: (() => void) | undefined;
     for (let i = 0; i < 15; i++) {
@@ -338,7 +334,7 @@ export class Hud {
       else if (b.cost && !affordable(p.res, b.cost)) d.classList.add('poor');
       if (b.active) d.classList.add('on');
       d.style.backgroundImage = `url("${b.icon}")`;
-      d.innerHTML = `<img class="command-icon" src="${escapeHtml(b.icon)}" alt="" draggable="false"><span class="command-label">${escapeHtml(b.title)}</span><span class="hk">${GRID_KEYS[i]}</span>${b.badge ? `<span class="badge">${b.badge}</span>` : ''}${b.progress !== undefined ? `<div class="prog" style="width:${(b.progress * 100).toFixed(0)}%"></div>` : ''}`;
+      d.innerHTML = `<span class="hk">${GRID_KEYS[i]}</span>${b.badge ? `<span class="badge">${b.badge}</span>` : ''}${b.progress !== undefined ? `<div class="prog" style="width:${(b.progress * 100).toFixed(0)}%"></div>` : ''}`;
       // Touch has no hover: holding a button shows its tooltip instead of pressing it. The
       // tooltip stays up after the finger lifts, until the next touch anywhere dismisses it.
       let holdTimer = 0;
@@ -408,7 +404,6 @@ export class Hud {
       });
       this.cmdEl.appendChild(d);
     }
-    this.cmdEl.scrollTop = scrollTop;
     // A held tooltip follows its button when progress or costs redraw the grid.
     reanchor?.();
     if (this.tipOwner && !this.tipOwner.isConnected) this.hideTip();

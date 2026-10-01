@@ -335,7 +335,6 @@ try {
   // Do not carry CDP's cancelled touch sequence across emulated device changes.
   await page.close();
   const layoutPage = await start(mobile, 28);
-  const layoutTouch = await mobile.newCDPSession(layoutPage);
   for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }, { width: 844, height: 390 }, { width: 568, height: 320 }]) {
     await layoutPage.setViewportSize(viewport);
     await layoutPage.evaluate(() => {
@@ -347,7 +346,7 @@ try {
       s.hud.update(performance.now() + 150);
     });
     const layout = await layoutPage.evaluate(() => {
-      const selectors = ['#topbar', '#bottom', '#cmd', '#info', '#mapwrap', '#minimap', '#btn-help', '#btn-menu'];
+      const selectors = ['#topbar', '#bottom', '#cmd', '#info', '#mapwrap', '#minimap', '#btn-help', '#btn-menu', '#cmd .cbtn'];
       const clipped = [];
       for (const selector of selectors) {
         for (const el of document.querySelectorAll(selector)) {
@@ -364,31 +363,6 @@ try {
     assert.deepEqual(layout.clipped, [], `HUD fits ${viewport.width}×${viewport.height}`);
     assert.ok(layout.mapHeight >= 100, `Map remains usable at ${viewport.width}×${viewport.height}: ${layout.mapHeight}px`);
     assert.ok(layout.scrollWidth <= layout.width + 1, 'No document horizontal overflow');
-    const commandBox = await layoutPage.locator('#cmd').boundingBox();
-    const scrollX = commandBox.x + commandBox.width / 2;
-    const scrollY = commandBox.y + commandBox.height - 12;
-    await layoutTouch.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: scrollX, y: scrollY }] });
-    for (let step = 1; step <= 8; step++) {
-      await layoutTouch.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: scrollX, y: scrollY - step * 10 }] });
-      await layoutPage.waitForTimeout(20);
-    }
-    await layoutTouch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-    await layoutPage.waitForTimeout(200);
-    assert.ok(await layoutPage.locator('#cmd').evaluate(el => el.scrollTop > 0), 'A finger drag scrolls labeled commands');
-    assert.equal(await layoutPage.evaluate(() => window.__session.panelMode), 'buildEco', 'Scrolling does not activate a command');
-    await layoutPage.evaluate(() => window.__session.hud.refreshCommands());
-    assert.ok(await layoutPage.locator('#cmd').evaluate(el => el.scrollTop > 0), 'Command refresh keeps the scroll position');
-    for (const button of await layoutPage.locator('#cmd .cbtn').all()) {
-      await button.scrollIntoViewIfNeeded();
-      const label = await button.evaluate((el) => {
-        const text = el.querySelector('.command-label');
-        const r = text.getBoundingClientRect(), b = el.getBoundingClientRect();
-        return { visible: r.width > 0 && r.height > 0, text: text.textContent, title: el.title,
-          fits: r.left >= b.left && r.right <= b.right && r.top >= b.top && r.bottom <= b.bottom };
-      });
-      assert.ok(label.visible && label.fits && label.text === label.title, 'Touch commands show their full names without clipping');
-    }
-    await layoutPage.locator('#cmd').evaluate((el) => { el.scrollTop = 0; });
     if (viewport.width === 390 || viewport.width === 844) {
       mkdirSync('screenshots', { recursive: true });
       await layoutPage.screenshot({ path: `screenshots/mobile-${viewport.width === 390 ? 'portrait' : 'landscape'}.png` });

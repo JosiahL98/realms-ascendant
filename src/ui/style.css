@@ -247,7 +247,7 @@ body:has(#specboard) #scores { display: none; }
 .touchbtn:disabled { opacity: 0.5; }
 .touchbtn[hidden] { display: none; }
 #touch-hint { flex-basis: 100%; font-size: 13px; line-height: 1.2; color: #fff4d8; text-shadow: 0 1px 3px #000, 0 0 4px #000; pointer-events: none; }
-.command-icon, .command-label { display: none; }
+.command-label { display: none; }
 
 @media (any-pointer: coarse) {
   #touch-controls { display: flex; }
@@ -256,7 +256,8 @@ body:has(#specboard) #scores { display: none; }
   /* Touch layouts show Idle in the touch row, where it does not cover the minimap. */
   #idlebtn { display: none; }
   .cbtn, .qi, .gu, .gi, #idlebtn { touch-action: manipulation; }
-  .cbtn { -webkit-touch-callout: none; }
+  /* Keep holds on command buttons from turning into browser pans, which cancel the touch. */
+  .cbtn { touch-action: none; -webkit-touch-callout: none; }
   #info .qi, #info .qi:first-child, #info .garr .gi { width: 44px; height: 44px; }
   #info .gu { width: 44px; height: 48px; background-size: 42px 42px; }
   .setup select, .setup input { min-height: 40px; font-size: 16px; }
@@ -396,37 +397,4 @@ body:has(#specboard) #scores { display: none; }
   #specboard { max-height: 88px; overflow: auto; }
   .menu-inner { padding-top: max(12px, var(--safe-top)); padding-bottom: max(12px, var(--safe-bottom)); }
   .title { margin-top: 0; font-size: 36px; }
-}
-
-/* Touch commands include their names. Larger menus scroll inside the HUD. */
-@media (any-pointer: coarse) {
-  #cmd { width: clamp(270px, 42vw, 420px); height: 100%; min-height: 0; max-height: 100%;
-    grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: none;
-    grid-auto-rows: minmax(64px, max-content); align-content: start;
-    overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-  #cmd .cslot { display: none; }
-  #cmd .cbtn { width: 100%; height: auto; min-width: 0; padding: 4px;
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
-    background-image: none !important; touch-action: pan-y; }
-  #cmd .command-icon { display: block; width: 24px; height: 24px; flex: none; pointer-events: none; }
-  #cmd .command-label { display: block; position: relative; z-index: 1; color: #fff1d3;
-    font: 12px/1.2 Arial, sans-serif; overflow-wrap: anywhere; pointer-events: none; }
-  #cmd .hk { display: none; }
-  #cmd .cbtn.off { filter: none; background-color: #211e19; }
-  #cmd .cbtn.off .command-icon { filter: grayscale(1); opacity: 0.5; }
-  #cmd .cbtn.off .command-label { color: #b7b0a2; }
-}
-
-@media (any-pointer: coarse) and (max-width: 700px) {
-  :root { --panel-h: calc(272px + var(--safe-bottom)); }
-  #bottom { grid-template-rows: 72px 182px; }
-  #cmd { width: 100%; }
-}
-
-@media (any-pointer: coarse) and (max-height: 500px) and (min-width: 501px) {
-  :root { --panel-h: calc(142px + var(--safe-bottom)); }
-  #cmd { width: clamp(270px, 46vw, 400px); grid-auto-rows: minmax(54px, max-content); }
-  #cmd .cbtn { flex-direction: row; gap: 4px; padding: 3px; }
-  #cmd .command-icon { width: 20px; height: 20px; }
-  #cmd .command-label { font-size: 11px; text-align: left; }
 }
