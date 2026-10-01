@@ -5,3 +5,4 @@ screenshots/
 .vite/
 tools/.texcache/
 __pycache__/
+output/trailer/
