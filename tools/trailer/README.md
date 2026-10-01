@@ -15,6 +15,7 @@ node tools/trailer/capture.mjs --preview
 node tools/trailer/capture.mjs
 python tools/trailer/score.py
 node tools/trailer/assemble.mjs
+node tools/trailer/verify.mjs
 ```
 
 Use `--scene fleet` (or `intro`, `latins`, `gauls`, `han`, `town`, `siege`, `battle`, `end`) to render one shot. Working clips, previews and the WAV master stay in `output/trailer/work/`. The final MP4 and working media are ignored by Git; the reproducible source and opening illustration are retained here.
@@ -35,7 +36,7 @@ Use `--scene fleet` (or `intro`, `latins`, `gauls`, `han`, `town`, `siege`, `bat
 
 ## Audio and artwork
 
-`score.py` composes and synthesizes an original instrumental score: strings, horns, drums, impacts, risers and environmental sound design. It uses no downloaded music or sampled recordings. There is no voice-over; all story text is on screen. The assembly masters the stereo score to a -15 LUFS target with a -1.2 dBTP ceiling.
+`score.py` composes and synthesizes an original instrumental score: strings, horns, drums, impacts, risers and environmental sound design. It uses no downloaded music or sampled recordings. There is no voice-over; all story text is on screen. The assembly uses two-pass loudness mastering to a -15 LUFS target with a -2 dBTP ceiling before AAC encoding, leaving headroom for the codec.
 
 The opening asset, `assets/rome-burns.png`, was generated with the **built-in image_gen tool** through the imagegen skill. Its exact prompt was:
 

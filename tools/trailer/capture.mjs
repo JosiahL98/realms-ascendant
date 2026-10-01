@@ -164,7 +164,7 @@ try {
       }
       const style = document.createElement('style');
       style.textContent = `
-        #hud,#overlay,#vignette,.menu-screen{display:none!important}body{background:#080b0b!important}
+        #hud,#overlay,#vignette,#menu-root{display:none!important}body{background:#080b0b!important}
         #film{position:fixed;inset:0;z-index:10000;color:#f8eedb;pointer-events:none;font-family:Cinzel,serif;overflow:hidden}
         #film .art{position:absolute;inset:-2%;width:104%;height:104%;object-fit:cover;transform-origin:60% 50%}
         .shade{position:absolute;inset:0;background:linear-gradient(180deg,#04070760 0%,transparent 32%,transparent 60%,#030707c9 100%)}
@@ -220,7 +220,10 @@ try {
           head.innerHTML=['HANNIBAL MARCHES<br>ON ROME.','ROME BURNS.<br>HISTORY BREAKS.','TWELVE CENTURIES<br>LATER…'][part];
           opacity=clamp(local/.4)*clamp(([3.5,3.5,3][part]-local)/.3);
           film.style.opacity=String(clamp(t/.8));
-        }else if(scene.id==='end')opacity=clamp(t/.6)*clamp((scene.duration-t)/.65);
+        }else if(scene.id==='end'){
+          opacity=clamp(t/.6)*clamp((scene.duration-t)/.65);
+          film.style.opacity=String(clamp((scene.duration-t)/.65));
+        }
         else opacity=clamp((t-.15)/.4)*clamp((scene.duration-t)/.25);
         copy.style.opacity=String(opacity);copy.style.transform=`translateY(${(1-clamp(t/.6))*13}px)`;
         ctx.clearRect(0,0,W,H);
